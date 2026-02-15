@@ -1,5 +1,10 @@
 # chapa-cli
 
+[![npm version](https://img.shields.io/npm/v/chapa-cli)](https://www.npmjs.com/package/chapa-cli)
+[![CI](https://github.com/juan294/chapa-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/juan294/chapa-cli/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/node/v/chapa-cli)](https://nodejs.org)
+
 ![Chapa Badge](https://chapa.thecreativetoken.com/u/juan294/badge.svg)
 
 Merge GitHub Enterprise Managed User (EMU) contributions into your [Chapa](https://chapa.thecreativetoken.com) developer impact badge.
@@ -96,32 +101,10 @@ This disables TLS certificate verification for the CLI session only.
 
 ## Contributing
 
-Contributions are welcome! This project was extracted from the main Chapa monorepo specifically so the community can help improve compatibility across different corporate environments.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
-### Common contributions we'd love
-
-- Fixes for specific corporate proxy/TLS configurations
-- Windows compatibility improvements
-- Better error messages for edge cases
-- Support for additional authentication methods
-
-### Development
-
-```bash
-git clone https://github.com/juan294/chapa-cli.git
-cd chapa-cli
-pnpm install
-pnpm test        # run tests
-pnpm run build   # build dist
-```
-
-### Testing against a local server
-
-```bash
-pnpm run build
-node dist/index.js login --server http://localhost:3001
-node dist/index.js merge --emu-handle your-emu --server http://localhost:3001
-```
+- [Report a bug](https://github.com/juan294/chapa-cli/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/juan294/chapa-cli/issues/new?template=feature_request.yml)
 
 ## License
 
