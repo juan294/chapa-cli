@@ -1,0 +1,89 @@
+name: NPM Token Expiry Reminder
+
+on:
+  schedule:
+    # Runs every Monday at 9:00 UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  check-expiry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if token expiry is approaching
+        env:
+          # Update this date when you rotate the token
+          TOKEN_EXPIRY: "2026-05-16"
+          WARN_DAYS_BEFORE: 14
+        run: |
+          expiry=$(date -d "$TOKEN_EXPIRY" +%s)
+          now=$(date +%s)
+          days_left=$(( (expiry - now) / 86400 ))
+
+          echo "Token expires: $TOKEN_EXPIRY"
+          echo "Days remaining: $days_left"
+
+          if [ "$days_left" -le 0 ]; then
+            echo "status=expired" >> $GITHUB_OUTPUT
+            echo "days=$days_left" >> $GITHUB_OUTPUT
+          elif [ "$days_left" -le "$WARN_DAYS_BEFORE" ]; then
+            echo "status=warning" >> $GITHUB_OUTPUT
+            echo "days=$days_left" >> $GITHUB_OUTPUT
+          else
+            echo "status=ok" >> $GITHUB_OUTPUT
+            echo "days=$days_left" >> $GITHUB_OUTPUT
+          fi
+        id: check
+
+      - name: Create reminder issue
+        if: steps.check.outputs.status == 'warning' || steps.check.outputs.status == 'expired'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if a reminder issue already exists
+          existing=$(gh issue list --repo ${{ github.repository }} --label "token-rotation" --state open --json number --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            echo "Reminder issue #$existing already exists, skipping"
+            exit 0
+          fi
+
+          if [ "${{ steps.check.outputs.status }}" = "expired" ]; then
+            title="URGENT: NPM_TOKEN has expired — CI publish is broken"
+            body="The npm granular access token (\`chapa-cli-github-actions\`) has **expired**. CI can no longer publish to npm.
+
+          ## Steps to rotate
+          1. Go to https://www.npmjs.com → Access Tokens → Generate New Token (Granular)
+          2. Name: \`chapa-cli-github-actions\`, Packages: **Read and write**, Expiration: **90 days**
+          3. Run: \`gh secret set NPM_TOKEN --repo juan294/chapa-cli\` and paste the new token
+          4. Update \`TOKEN_EXPIRY\` in \`.github/workflows/token-expiry-reminder.yml\` to the new date
+          5. Close this issue"
+          else
+            title="NPM_TOKEN expires in ${{ steps.check.outputs.days }} days — rotate soon"
+            body="The npm granular access token (\`chapa-cli-github-actions\`) expires in **${{ steps.check.outputs.days }} days**.
+
+          ## Steps to rotate
+          1. Go to https://www.npmjs.com → Access Tokens → Generate New Token (Granular)
+          2. Name: \`chapa-cli-github-actions\`, Packages: **Read and write**, Expiration: **90 days**
+          3. Run: \`gh secret set NPM_TOKEN --repo juan294/chapa-cli\` and paste the new token
+          4. Update \`TOKEN_EXPIRY\` in \`.github/workflows/token-expiry-reminder.yml\` to the new date
+          5. Close this issue"
+          fi
+
+          gh issue create \
+            --repo ${{ github.repository }} \
+            --title "$title" \
+            --body "$body" \
+            --label "token-rotation"
+
+      - name: Create token-rotation label if missing
+        if: steps.check.outputs.status == 'warning' || steps.check.outputs.status == 'expired'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "token-rotation" \
+            --repo ${{ github.repository }} \
+            --description "NPM token rotation reminder" \
+            --color "D93F0B" \
+            2>/dev/null || true
