@@ -1,0 +1,86 @@
+# CLAUDE.md — Internal Ways of Working
+
+## Project Overview
+
+chapa-cli is an open-source CLI tool that merges GitHub Enterprise Managed User (EMU) contributions into [Chapa](https://chapa.thecreativetoken.com) developer impact badges. It connects to the Chapa server via HTTP and uses GitHub's GraphQL API to fetch EMU contribution data.
+
+## Architecture
+
+```
+src/
+├── index.ts       # CLI entry point, command dispatch
+├── cli.ts         # Argument parsing (Node parseArgs)
+├── shared.ts      # Types, GraphQL query, stats aggregation
+├── login.ts       # OAuth device flow
+├── fetch-emu.ts   # GitHub GraphQL integration
+├── upload.ts      # Chapa server upload
+├── config.ts      # Credential storage (~/.chapa/credentials.json)
+└── auth.ts        # Token resolution
+```
+
+Three API endpoints connect the CLI to the Chapa server: device flow auth, token exchange, and stats upload.
+
+## Tech Stack
+
+- **Language**: TypeScript (ES2022, ESM)
+- **Build**: tsup (bundles to `dist/`, adds shebang)
+- **Test**: Vitest + v8 coverage
+- **CI**: GitHub Actions (Node 18/20/22 matrix)
+- **Package manager**: pnpm
+
+## Branching Strategy
+
+- `develop` — default working branch; all feature branches merge here
+- `main` — release branch; CI auto-publishes to npm on version bump
+
+## Commit Conventions
+
+Use lowercase [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add proxy support
+fix: handle expired tokens gracefully
+docs: update contributing guide
+chore: bump dependencies
+test: add coverage for auth module
+refactor: simplify GraphQL query builder
+```
+
+## PR Workflow
+
+1. Create a feature branch from `develop`
+2. Make changes, write/update tests
+3. Open a PR targeting `develop`
+4. CI must pass (test + typecheck + build across Node 18/20/22)
+5. Merge to `develop`; when ready to release, merge `develop` → `main`
+
+## Testing Requirements
+
+Before submitting a PR, ensure all checks pass:
+
+```bash
+pnpm test          # unit tests
+pnpm run typecheck # TypeScript type checking
+pnpm run build     # production build
+```
+
+## Release Process
+
+1. Bump `version` in `package.json` on `develop`
+2. Merge `develop` → `main`
+3. CI detects version differs from npm registry and auto-publishes
+
+## Code Style
+
+- ESM imports (`import`/`export`, no `require`)
+- Prefer explicit types over `any`
+- Keep modules focused — one responsibility per file
+- Use Node.js built-in APIs where possible (no unnecessary dependencies)
+- Zero runtime dependencies
+
+## Security Considerations
+
+- Never commit tokens or credentials
+- EMU tokens are passed via CLI flags or environment variables, never stored
+- Personal auth tokens are stored in `~/.chapa/credentials.json` with user-only permissions
+- The `--insecure` flag exists for corporate TLS interception but should not be used outside that context
