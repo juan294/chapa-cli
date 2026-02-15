@@ -2,6 +2,77 @@ import type { StatsData, RawContributionData } from "./shared.js";
 import { CONTRIBUTION_QUERY, buildStatsFromRaw, SCORING_WINDOW_DAYS } from "./shared.js";
 
 // ---------------------------------------------------------------------------
+// GraphQL response types
+// ---------------------------------------------------------------------------
+
+/** Shape of a single owned-repo node returned by the GraphQL query. */
+interface OwnedRepoNode {
+  stargazerCount: number;
+  forkCount: number;
+  watchers: { totalCount: number };
+}
+
+/** Full shape of the GitHub GraphQL response for the contribution query. */
+interface GraphQLResponse {
+  data?: {
+    user: {
+      login: string;
+      name: string | null;
+      avatarUrl: string;
+      contributionsCollection: {
+        contributionCalendar: {
+          totalContributions: number;
+          weeks: {
+            contributionDays: {
+              date: string;
+              contributionCount: number;
+            }[];
+          }[];
+        };
+        pullRequestContributions: {
+          totalCount: number;
+          nodes: ({
+            pullRequest: {
+              additions: number;
+              deletions: number;
+              changedFiles: number;
+              merged: boolean;
+            } | null;
+          } | null)[];
+        };
+        pullRequestReviewContributions: { totalCount: number };
+        issueContributions: { totalCount: number };
+      };
+      repositories: {
+        totalCount: number;
+        nodes: {
+          nameWithOwner: string;
+          defaultBranchRef: {
+            target: { history: { totalCount: number } };
+          } | null;
+        }[];
+      };
+      ownedRepos?: {
+        nodes: (OwnedRepoNode | null)[];
+      };
+    } | null;
+  };
+  errors?: { message: string; type?: string }[];
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Maximum characters to log from error response bodies or GraphQL errors. */
+const MAX_ERROR_BODY_LENGTH = 200;
+
+/** Truncate a string to the given max length, appending "..." if truncated. */
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max) + "..." : s;
+}
+
+// ---------------------------------------------------------------------------
 // Fetch EMU stats via GraphQL (requires EMU token with auth)
 // ---------------------------------------------------------------------------
 
@@ -35,14 +106,15 @@ export async function fetchEmuStats(
 
     if (!res.ok) {
       const body = await res.text().catch(() => "(unreadable)");
-      console.error(`[cli] GraphQL HTTP ${res.status}: ${body}`);
+      console.error(`[cli] GraphQL HTTP ${res.status}: ${truncate(body, MAX_ERROR_BODY_LENGTH)}`);
       return null;
     }
 
-    const json = await res.json();
+    const json: GraphQLResponse = await res.json();
 
     if (json.errors) {
-      console.error(`[cli] GraphQL errors for ${login}:`, json.errors);
+      const errStr = truncate(JSON.stringify(json.errors), MAX_ERROR_BODY_LENGTH);
+      console.error(`[cli] GraphQL errors for ${login}: ${errStr}`);
     }
 
     if (!json.data?.user) return null;
@@ -55,19 +127,10 @@ export async function fetchEmuStats(
     // contain null nodes — filter and unwrap them here.
     const prNodes = cc.pullRequestContributions.nodes
       .filter(
-        (n: { pullRequest: unknown } | null) =>
+        (n): n is { pullRequest: { additions: number; deletions: number; changedFiles: number; merged: boolean } } =>
           n != null && n.pullRequest != null,
       )
-      .map(
-        (n: {
-          pullRequest: {
-            additions: number;
-            deletions: number;
-            changedFiles: number;
-            merged: boolean;
-          };
-        }) => n.pullRequest,
-      );
+      .map((n) => n.pullRequest);
 
     const raw: RawContributionData = {
       login: user.login,
@@ -86,14 +149,14 @@ export async function fetchEmuStats(
       },
       ownedRepoStars: {
         nodes: (user.ownedRepos?.nodes ?? [])
-          .filter((n: any) => n != null)
-          .map((n: any) => ({ stargazerCount: n.stargazerCount, forkCount: n.forkCount, watchers: { totalCount: n.watchers.totalCount } })),
+          .filter((n: OwnedRepoNode | null): n is OwnedRepoNode => n != null)
+          .map((n) => ({ stargazerCount: n.stargazerCount, forkCount: n.forkCount, watchers: { totalCount: n.watchers.totalCount } })),
       },
     };
 
     return buildStatsFromRaw(raw);
   } catch (err) {
-    console.error(`[cli] fetch error:`, err);
+    console.error("[cli] fetch error:", (err as Error).message);
     return null;
   }
 }
