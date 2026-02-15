@@ -1,5 +1,7 @@
 # chapa-cli
 
+![Chapa Badge](https://chapa.thecreativetoken.com/u/juan294/badge.svg)
+
 Merge GitHub Enterprise Managed User (EMU) contributions into your [Chapa](https://chapa.thecreativetoken.com) developer impact badge.
 
 ## Why?
