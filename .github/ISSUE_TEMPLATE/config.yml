@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/juan294/chapa-cli/security/advisories/new
+    about: Report a security vulnerability privately
+  - name: Chapa Platform Issues
+    url: https://github.com/juan294/chapa/issues
+    about: For issues with the Chapa platform itself (not the CLI)
