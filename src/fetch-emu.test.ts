@@ -139,6 +139,71 @@ describe("fetchEmuStats", () => {
     expect(result).toBeNull();
   });
 
+  it("logs only error .message when fetch throws, not the full error object (#8)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const sensitiveError = new Error("Network error");
+    // Simulate an error object that could contain a token in its properties
+    (sensitiveError as unknown as Record<string, unknown>).config = {
+      headers: { Authorization: "Bearer ghp_secret_token_123" },
+    };
+
+    mockFetch.mockRejectedValue(sensitiveError);
+
+    await fetchEmuStats("corp_user", "ghp_token");
+
+    // Should log only the message string, not the full error object
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[cli] fetch error:",
+      "Network error",
+    );
+    // Ensure the full error object (which could contain tokens) is NOT logged
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      "[cli] fetch error:",
+      sensitiveError,
+    );
+
+    errorSpy.mockRestore();
+  });
+
+  it("truncates long HTTP error response bodies to 200 characters (#9)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const longBody = "x".repeat(500);
+
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => longBody,
+    });
+
+    await fetchEmuStats("corp_user", "ghp_token");
+
+    const loggedMessage = errorSpy.mock.calls[0]![0] as string;
+    // The logged body should be truncated — total message should contain at most 200 chars of body
+    expect(loggedMessage).toContain("x".repeat(200));
+    expect(loggedMessage).not.toContain("x".repeat(201));
+
+    errorSpy.mockRestore();
+  });
+
+  it("does not truncate short HTTP error response bodies (#9)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const shortBody = "Unauthorized";
+
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => shortBody,
+    });
+
+    await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      `[cli] GraphQL HTTP 401: ${shortBody}`,
+    );
+
+    errorSpy.mockRestore();
+  });
+
   it("logs GraphQL errors when present alongside valid data", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
@@ -175,9 +240,59 @@ describe("fetchEmuStats", () => {
     const result = await fetchEmuStats("corp_user", "ghp_token");
     expect(result).not.toBeNull();
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[cli] GraphQL errors"),
-      graphqlErrors,
+      expect.stringContaining("[cli] GraphQL errors for corp_user:"),
     );
+    // Errors are logged as a stringified (and potentially truncated) representation
+    const loggedMessage = errorSpy.mock.calls[0]![0] as string;
+    expect(loggedMessage).toContain("Could not resolve to a User");
+
+    errorSpy.mockRestore();
+  });
+
+  it("truncates long GraphQL error arrays when logging (#9)", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Create a very long error array that will exceed 200 chars when stringified
+    const longErrors = Array.from({ length: 50 }, (_, i) => ({
+      message: `Error message number ${i} with some additional padding text`,
+      type: "SOME_ERROR",
+    }));
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        errors: longErrors,
+        data: {
+          user: {
+            login: "corp_user",
+            name: null,
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: {
+                totalContributions: 10,
+                weeks: [],
+              },
+              pullRequestContributions: {
+                totalCount: 0,
+                nodes: [],
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }),
+    });
+
+    await fetchEmuStats("corp_user", "ghp_token");
+
+    const loggedMessage = errorSpy.mock.calls[0]![0] as string;
+    // The prefix is "[cli] GraphQL errors for corp_user: " which is ~37 chars
+    // The body portion (after the prefix) should be at most 200 chars + "..."
+    const bodyPart = loggedMessage.replace("[cli] GraphQL errors for corp_user: ", "");
+    expect(bodyPart.length).toBeLessThanOrEqual(203); // 200 + "..."
 
     errorSpy.mockRestore();
   });
