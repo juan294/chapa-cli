@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { saveConfig } from "./config.js";
 
 export const POLL_INTERVAL_MS = 2000;
-export const MAX_POLL_ATTEMPTS = 150; // 5 minutes at 2s intervals
+const MAX_POLL_ATTEMPTS = 150; // 5 minutes at 2s intervals
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -23,7 +23,7 @@ interface PollResponse {
   handle?: string;
 }
 
-export interface LoginOptions {
+interface LoginOptions {
   verbose?: boolean;
   insecure?: boolean;
 }

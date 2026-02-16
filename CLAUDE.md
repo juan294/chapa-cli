@@ -33,6 +33,11 @@ Three API endpoints connect the CLI to the Chapa server: device flow auth, token
 - `develop` — default working branch; all feature branches merge here
 - `main` — release branch; CI auto-publishes to npm on version bump
 
+## Deployment
+
+- Production deploys from `main` only. Changes pushed to `develop` must be merged to `main` via PR before they go live.
+- Always confirm the target branch before pushing — if the goal is production deployment, ensure the PR targets `main`.
+
 ## Commit Conventions
 
 Use lowercase [Conventional Commits](https://www.conventionalcommits.org/):
@@ -54,7 +59,11 @@ refactor: simplify GraphQL query builder
 4. CI must pass (test + typecheck + build across Node 18/20/22)
 5. Merge to `develop`; when ready to release, merge `develop` → `main`
 
-## Testing Requirements
+## Testing & CI
+
+- This project uses TDD. Always write tests before or alongside implementation.
+- All PRs must have CI green before merging. Run the full test suite locally before pushing.
+- After merging to develop, if production deployment is the goal, immediately create a PR from develop → main.
 
 Before submitting a PR, ensure all checks pass:
 
@@ -84,3 +93,32 @@ pnpm run build     # production build
 - EMU tokens are passed via CLI flags or environment variables, never stored
 - Personal auth tokens are stored in `~/.chapa/credentials.json` with user-only permissions
 - The `--insecure` flag exists for corporate TLS interception but should not be used outside that context
+
+## Language & Tone
+
+- All user-facing content for the Asturias project must be in Spanish unless explicitly stated otherwise.
+- For social media copy: keep tone confident and positive — avoid pitying, resentful, or overly dramatic language. Never mention unreleased/unpublished features.
+
+## Sub-Agent & Background Task Guidelines
+
+- Sub-agents (Task tool) may lack Bash or file-write permissions. If spawning agents for fixes, verify they have the required tool access first.
+- If a sub-agent fails due to permissions, take over manually immediately rather than retrying.
+- Be aware of context window limits when receiving multiple parallel task notifications.
+
+## Tool & API Awareness
+
+- You CAN set Vercel environment variables via CLI — do not claim otherwise.
+- You CANNOT handle credentials (npm tokens, API keys) directly — ask the user to provide/set them.
+- Upstash Redis API differs from standard Redis: use `zrange` with options instead of `zrangebyscore`/`zrevrangebyscore`.
+
+## Headless Mode
+
+Use Claude Code in headless/non-interactive mode for CI and batch automation:
+
+```bash
+# Run audit fixes in CI with explicit permissions:
+claude -p "Fix all TypeScript lint errors and run tests" --allowedTools "Edit,Read,Bash,Write" --output-format json
+
+# Batch process GitHub issues:
+claude -p "Read issue #240 and implement the fix with TDD" --allowedTools "Edit,Read,Bash,Write,Grep"
+```

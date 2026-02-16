@@ -56,12 +56,6 @@ function defaultArgs(overrides: Record<string, unknown> = {}) {
 async function runMain() {
   // Capture any unhandled rejections thrown by the fire-and-forget main()
   const rejections: Error[] = [];
-  const handler = (event: PromiseRejectionEvent) => {
-    // Prevent the rejection from being reported as an error
-    event.preventDefault();
-    rejections.push(event.reason as Error);
-  };
-
   // Node.js uses 'unhandledRejection' on process, not the browser event
   const nodeHandler = (reason: unknown) => {
     rejections.push(reason as Error);
