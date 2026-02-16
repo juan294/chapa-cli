@@ -110,3 +110,15 @@ pnpm run build     # production build
 - You CAN set Vercel environment variables via CLI — do not claim otherwise.
 - You CANNOT handle credentials (npm tokens, API keys) directly — ask the user to provide/set them.
 - Upstash Redis API differs from standard Redis: use `zrange` with options instead of `zrangebyscore`/`zrevrangebyscore`.
+
+## Headless Mode
+
+Use Claude Code in headless/non-interactive mode for CI and batch automation:
+
+```bash
+# Run audit fixes in CI with explicit permissions:
+claude -p "Fix all TypeScript lint errors and run tests" --allowedTools "Edit,Read,Bash,Write" --output-format json
+
+# Batch process GitHub issues:
+claude -p "Read issue #240 and implement the fix with TDD" --allowedTools "Edit,Read,Bash,Write,Grep"
+```
