@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-export interface CliConfig {
+interface CliConfig {
   token: string;
   handle: string;
   server: string;
