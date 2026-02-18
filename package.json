@@ -1,6 +1,6 @@
 {
   "name": "chapa-cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Merge GitHub EMU contributions into your Chapa developer impact badge",
   "type": "module",
   "bin": {
