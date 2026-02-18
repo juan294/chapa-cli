@@ -99,6 +99,41 @@ This disables TLS certificate verification for the CLI session only.
 
 2. **Merge**: The CLI fetches your EMU account's contribution data via GitHub's GraphQL API (using your EMU token), then uploads the aggregated stats to the Chapa server. Your badge will reflect the combined data on next refresh.
 
+## Metrics collected
+
+The `merge` command fetches the following data from your EMU account via GitHub's GraphQL API, covering a rolling **365-day window**.
+
+### Contribution metrics
+
+| Metric | Description |
+|--------|-------------|
+| Total commits | All contributions recorded in GitHub's contribution calendar |
+| Active days | Number of days with at least one contribution |
+| Merged PRs (count) | Pull requests that were merged |
+| Merged PRs (weight) | Complexity-weighted score based on lines changed and files touched |
+| Reviews submitted | Pull request reviews authored |
+| Issues closed | Issues contributed to |
+| Lines added | Sum of additions across merged PRs |
+| Lines deleted | Sum of deletions across merged PRs |
+
+### Repository metrics
+
+| Metric | Description |
+|--------|-------------|
+| Repos contributed to | Repositories with at least one commit in the period (top 20 by last push) |
+| Top repo share | Ratio of commits in your most-active repo vs. total — measures focus/spread |
+| Total stars | Stargazers across your owned repositories |
+| Total forks | Forks across your owned repositories |
+| Total watchers | Watchers across your owned repositories |
+
+### Activity data
+
+| Metric | Description |
+|--------|-------------|
+| Heatmap | Daily contribution count for every day in the 365-day window |
+
+All metrics are aggregated client-side and uploaded to the Chapa server in a single request. The EMU token is used only to query GitHub's API and is never stored or sent to Chapa.
+
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
