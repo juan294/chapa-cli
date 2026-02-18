@@ -27,7 +27,10 @@ Requires Node.js 18+.
 # 1. Log in with your personal GitHub (opens browser)
 chapa login
 
-# 2. Merge your EMU contributions
+# 2. Create an EMU token with scopes: repo, read:user, read:org
+#    Settings > Developer settings > Personal access tokens (on your EMU account)
+
+# 3. Merge your EMU contributions
 chapa merge --emu-handle your-emu-handle --emu-token ghp_your_emu_token
 ```
 
@@ -60,7 +63,11 @@ Fetch stats from your EMU account and upload them to Chapa.
 chapa merge --emu-handle your-emu-handle
 ```
 
-The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` environment variable. The token needs `read:user` scope.
+The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` environment variable.
+
+**Required token scopes:** `repo`, `read:user`, `read:org`
+
+> Without `repo` scope, only the contribution calendar works — PRs, lines, repos contributed, and stars will all show as zero.
 
 ## Options
 
@@ -71,7 +78,8 @@ The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` envir
 | `--handle <handle>` | Override personal handle (auto-detected from login) |
 | `--token <token>` | Override auth token (auto-detected from login) |
 | `--server <url>` | Chapa server URL (default: production) |
-| `--verbose` | Show detailed polling logs during login |
+| `--verbose` | Show debug output, timings, and server responses |
+| `--json` | Output merge result as structured JSON (for scripting/CI) |
 | `--insecure` | Skip TLS certificate verification |
 | `--version`, `-v` | Show version number |
 | `--help`, `-h` | Show help message |
