@@ -71,4 +71,14 @@ describe("parseArgs", () => {
     const args = parseArgs(["login"]);
     expect(args.insecure).toBe(false);
   });
+
+  it("sets json flag when --json is passed", () => {
+    const args = parseArgs(["merge", "--emu-handle", "corp", "--json"]);
+    expect(args.json).toBe(true);
+  });
+
+  it("json defaults to false", () => {
+    const args = parseArgs(["merge", "--emu-handle", "corp"]);
+    expect(args.json).toBe(false);
+  });
 });

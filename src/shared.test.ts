@@ -2,10 +2,12 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   computePrWeight,
   buildStatsFromRaw,
+  formatStatsSummary,
   CONTRIBUTION_QUERY,
   SCORING_WINDOW_DAYS,
   PR_WEIGHT_AGG_CAP,
   type RawContributionData,
+  type StatsData,
 } from "./shared";
 
 // ---------------------------------------------------------------------------
@@ -656,5 +658,115 @@ describe("CONTRIBUTION_QUERY", () => {
     expect(CONTRIBUTION_QUERY).toContain("stargazerCount");
     expect(CONTRIBUTION_QUERY).toContain("forkCount");
     expect(CONTRIBUTION_QUERY).toContain("watchers");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatStatsSummary
+// ---------------------------------------------------------------------------
+
+describe("formatStatsSummary", () => {
+  function makeStats(overrides: Partial<StatsData> = {}): StatsData {
+    return {
+      handle: "testuser",
+      commitsTotal: 42,
+      activeDays: 180,
+      prsMergedCount: 5,
+      prsMergedWeight: 8.2,
+      reviewsSubmittedCount: 3,
+      issuesClosedCount: 1,
+      linesAdded: 2340,
+      linesDeleted: 890,
+      reposContributed: 7,
+      topRepoShare: 0.5,
+      maxCommitsIn10Min: 0,
+      totalStars: 12,
+      totalForks: 3,
+      totalWatchers: 5,
+      heatmapData: [],
+      fetchedAt: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it("includes commits total", () => {
+    const summary = formatStatsSummary(makeStats({ commitsTotal: 42 }));
+    expect(summary).toContain("Commits");
+    expect(summary).toContain("42");
+  });
+
+  it("includes active days", () => {
+    const summary = formatStatsSummary(makeStats({ activeDays: 180 }));
+    expect(summary).toContain("Active days");
+    expect(summary).toContain("180");
+  });
+
+  it("includes PRs merged count and weight", () => {
+    const summary = formatStatsSummary(makeStats({ prsMergedCount: 5, prsMergedWeight: 8.2 }));
+    expect(summary).toContain("PRs merged");
+    expect(summary).toContain("5");
+    expect(summary).toContain("8.2");
+  });
+
+  it("includes reviews submitted count", () => {
+    const summary = formatStatsSummary(makeStats({ reviewsSubmittedCount: 3 }));
+    expect(summary).toContain("Reviews");
+    expect(summary).toContain("3");
+  });
+
+  it("includes issues closed count", () => {
+    const summary = formatStatsSummary(makeStats({ issuesClosedCount: 1 }));
+    expect(summary).toContain("Issues closed");
+    expect(summary).toContain("1");
+  });
+
+  it("includes repos contributed", () => {
+    const summary = formatStatsSummary(makeStats({ reposContributed: 7 }));
+    expect(summary).toContain("Repos contributed");
+    expect(summary).toContain("7");
+  });
+
+  it("includes lines added and deleted", () => {
+    const summary = formatStatsSummary(makeStats({ linesAdded: 2340, linesDeleted: 890 }));
+    expect(summary).toContain("Lines");
+    expect(summary).toContain("+2,340");
+    expect(summary).toContain("-890");
+  });
+
+  it("includes stars and forks", () => {
+    const summary = formatStatsSummary(makeStats({ totalStars: 12, totalForks: 3 }));
+    expect(summary).toContain("Stars");
+    expect(summary).toContain("Forks");
+    expect(summary).toContain("12");
+    expect(summary).toContain("3");
+  });
+
+  it("formats large numbers with commas", () => {
+    const summary = formatStatsSummary(makeStats({ commitsTotal: 1234567 }));
+    expect(summary).toContain("1,234,567");
+  });
+
+  it("handles zero values gracefully", () => {
+    const summary = formatStatsSummary(makeStats({
+      commitsTotal: 0,
+      activeDays: 0,
+      prsMergedCount: 0,
+      prsMergedWeight: 0,
+      reviewsSubmittedCount: 0,
+      issuesClosedCount: 0,
+      linesAdded: 0,
+      linesDeleted: 0,
+      reposContributed: 0,
+      totalStars: 0,
+      totalForks: 0,
+    }));
+    expect(summary).toContain("Commits");
+    expect(summary).toContain("0");
+  });
+
+  it("returns a multi-line string", () => {
+    const summary = formatStatsSummary(makeStats());
+    const lines = summary.split("\n").filter((l) => l.trim().length > 0);
+    expect(lines.length).toBeGreaterThanOrEqual(8);
   });
 });

@@ -281,3 +281,31 @@ export function buildStatsFromRaw(raw: RawContributionData): StatsData {
     fetchedAt: new Date().toISOString(),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Stats formatting
+// ---------------------------------------------------------------------------
+
+/** Format a number with comma separators (e.g. 1234567 → "1,234,567"). */
+function fmtNum(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+/**
+ * Format all key stats into a human-readable summary string.
+ *
+ * Pure function — deterministic output for a given input.
+ */
+export function formatStatsSummary(stats: StatsData): string {
+  const lines = [
+    `  Commits:            ${fmtNum(stats.commitsTotal)}`,
+    `  Active days:        ${fmtNum(stats.activeDays)}`,
+    `  PRs merged:         ${fmtNum(stats.prsMergedCount)} (weight: ${stats.prsMergedWeight.toFixed(1)})`,
+    `  Reviews:            ${fmtNum(stats.reviewsSubmittedCount)}`,
+    `  Issues closed:      ${fmtNum(stats.issuesClosedCount)}`,
+    `  Repos contributed:  ${fmtNum(stats.reposContributed)}`,
+    `  Lines:              +${fmtNum(stats.linesAdded)} / -${fmtNum(stats.linesDeleted)}`,
+    `  Stars / Forks:      ${fmtNum(stats.totalStars)} / ${fmtNum(stats.totalForks)}`,
+  ];
+  return lines.join("\n");
+}
