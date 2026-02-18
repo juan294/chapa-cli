@@ -648,6 +648,10 @@ describe("CONTRIBUTION_QUERY", () => {
     expect(CONTRIBUTION_QUERY).toContain("history");
   });
 
+  it("includes ORGANIZATION_MEMBER in ownerAffiliations to capture org repos", () => {
+    expect(CONTRIBUTION_QUERY).toContain("ORGANIZATION_MEMBER");
+  });
+
   it("requests owned repo star/fork/watcher data", () => {
     expect(CONTRIBUTION_QUERY).toContain("stargazerCount");
     expect(CONTRIBUTION_QUERY).toContain("forkCount");

@@ -145,7 +145,7 @@ query($login: String!, $since: DateTime!, $until: DateTime!, $historySince: GitT
         totalCount
       }
     }
-    repositories(first: 20, ownerAffiliations: [OWNER, COLLABORATOR], orderBy: {field: PUSHED_AT, direction: DESC}) {
+    repositories(first: 20, ownerAffiliations: [OWNER, COLLABORATOR, ORGANIZATION_MEMBER], orderBy: {field: PUSHED_AT, direction: DESC}) {
       totalCount
       nodes {
         nameWithOwner
