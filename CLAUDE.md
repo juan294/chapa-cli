@@ -31,7 +31,7 @@ Three API endpoints connect the CLI to the Chapa server: device flow auth, token
 ## Branching Strategy
 
 - `develop` — default working branch; all feature branches merge here
-- `main` — release branch; CI auto-publishes to npm on version bump
+- `main` — release branch; publish to npm is done manually with 2FA
 
 ## Deployment
 
@@ -76,8 +76,8 @@ pnpm run build     # production build
 ## Release Process
 
 1. Bump `version` in `package.json` on `develop`
-2. Merge `develop` → `main`
-3. CI detects version differs from npm registry and auto-publishes
+2. Merge `develop` → `main` via PR
+3. Publish manually: `npm publish --otp=<code>` (2FA required)
 
 ## Code Style
 
