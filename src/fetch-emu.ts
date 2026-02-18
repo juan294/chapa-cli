@@ -73,6 +73,19 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "..." : s;
 }
 
+/** Extract a useful error message, walking error.cause chain for root cause. */
+function extractErrorDetail(err: Error): string {
+  const parts = [err.message];
+  let current: unknown = err.cause;
+  while (current instanceof Error) {
+    if (current.message && current.message !== err.message) {
+      parts.push(current.message);
+    }
+    current = current.cause;
+  }
+  return parts.join(" → ");
+}
+
 // ---------------------------------------------------------------------------
 // Fetch EMU stats via GraphQL (requires EMU token with auth)
 // ---------------------------------------------------------------------------
@@ -116,7 +129,7 @@ export async function fetchEmuStats(
     if (!res.ok) {
       const body = await res.text().catch(() => "(unreadable)");
       const msg = `[cli] GraphQL HTTP ${res.status}: ${truncate(body, MAX_ERROR_BODY_LENGTH)}`;
-      log?.error(msg) ?? console.error(msg);
+      if (log) { log.error(msg); } else { console.error(msg); }
       return null;
     }
 
@@ -125,7 +138,7 @@ export async function fetchEmuStats(
     if (json.errors) {
       const errStr = truncate(JSON.stringify(json.errors), MAX_ERROR_BODY_LENGTH);
       const msg = `[cli] GraphQL errors for ${login}: ${errStr}`;
-      log?.error(msg) ?? console.error(msg);
+      if (log) { log.error(msg); } else { console.error(msg); }
     }
 
     if (!json.data?.user) return null;
@@ -167,8 +180,9 @@ export async function fetchEmuStats(
 
     return buildStatsFromRaw(raw);
   } catch (err) {
-    const msg = `[cli] fetch error: ${(err as Error).message}`;
-    log?.error(msg) ?? console.error("[cli] fetch error:", (err as Error).message);
+    const detail = extractErrorDetail(err as Error);
+    const msg = `[cli] fetch error: ${detail}`;
+    if (log) { log.error(msg); } else { console.error(msg); }
     return null;
   }
 }
