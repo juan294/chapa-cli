@@ -8,6 +8,10 @@ const mockUploadSupplementalStats = vi.hoisted(() => vi.fn());
 const mockLoadConfig = vi.hoisted(() => vi.fn());
 const mockDeleteConfig = vi.hoisted(() => vi.fn());
 const mockLogin = vi.hoisted(() => vi.fn());
+const mockCreateLogger = vi.hoisted(() => vi.fn());
+const mockFormatStatsSummary = vi.hoisted(() => vi.fn());
+const mockSendTelemetry = vi.hoisted(() => vi.fn());
+const mockClassifyError = vi.hoisted(() => vi.fn());
 
 vi.mock("./cli.js", () => ({ parseArgs: mockParseArgs }));
 vi.mock("./auth.js", () => ({ resolveToken: mockResolveToken }));
@@ -18,12 +22,23 @@ vi.mock("./config.js", () => ({
   deleteConfig: mockDeleteConfig,
 }));
 vi.mock("./login.js", () => ({ login: mockLogin }));
+vi.mock("./logger.js", () => ({ createLogger: mockCreateLogger }));
+vi.mock("./shared.js", () => ({ formatStatsSummary: mockFormatStatsSummary }));
+vi.mock("./telemetry.js", () => ({
+  sendTelemetry: mockSendTelemetry,
+  classifyError: mockClassifyError,
+}));
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 /** Collect all output from a console spy into a single string. */
 function spyOutput(spy: ReturnType<typeof vi.spyOn>): string {
   return spy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
+}
+
+/** Collect all output from a mock logger method into a single string. */
+function loggerOutput(method: ReturnType<typeof vi.fn>): string {
+  return method.mock.calls.map((c: unknown[]) => String(c[0])).join("\n");
 }
 
 /** Default CliArgs shape — override per test. */
@@ -36,6 +51,7 @@ function defaultArgs(overrides: Record<string, unknown> = {}) {
     token: undefined,
     server: "https://chapa.thecreativetoken.com",
     verbose: false,
+    json: false,
     insecure: false,
     version: false,
     help: false,
@@ -71,6 +87,19 @@ async function runMain() {
   }
 }
 
+/** Create a mock logger with spyable methods. */
+function createMockLogger() {
+  return {
+    info: vi.fn(),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    time: vi.fn(),
+    timeEnd: vi.fn().mockReturnValue(0),
+    getTimings: vi.fn().mockReturnValue({}),
+  };
+}
+
 // ── Test Suite ───────────────────────────────────────────────────────────
 
 describe("index.ts command dispatch", () => {
@@ -78,6 +107,8 @@ describe("index.ts command dispatch", () => {
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errorSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutWriteSpy: ReturnType<typeof vi.spyOn>;
+  let mockLogger: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     vi.resetModules();
@@ -93,6 +124,11 @@ describe("index.ts command dispatch", () => {
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stdoutWriteSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    // Create mock logger and wire it up
+    mockLogger = createMockLogger();
+    mockCreateLogger.mockReturnValue(mockLogger);
 
     // Safe defaults for all downstream mocks
     mockLoadConfig.mockReturnValue(null);
@@ -101,6 +137,9 @@ describe("index.ts command dispatch", () => {
     mockUploadSupplementalStats.mockResolvedValue({ success: false, error: "mock" });
     mockLogin.mockResolvedValue(undefined);
     mockDeleteConfig.mockReturnValue(false);
+    mockFormatStatsSummary.mockReturnValue("  Commits:  42\n  PRs merged:  5");
+    mockSendTelemetry.mockResolvedValue(undefined);
+    mockClassifyError.mockReturnValue("unknown");
   });
 
   afterEach(() => {
@@ -108,6 +147,7 @@ describe("index.ts command dispatch", () => {
     logSpy.mockRestore();
     errorSpy.mockRestore();
     warnSpy.mockRestore();
+    stdoutWriteSpy.mockRestore();
   });
 
   // ── --version ────────────────────────────────────────────────────────
@@ -139,6 +179,30 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("chapa merge");
     expect(output).toContain("--emu-handle");
     expect(output).toContain("--help");
+  });
+
+  it("help text includes --json and --verbose flags", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ help: true }));
+
+    await runMain();
+
+    const output = spyOutput(logSpy);
+    expect(output).toContain("--json");
+    expect(output).toContain("--verbose");
+  });
+
+  // ── --json + --verbose mutual exclusion ───────────────────────────────
+
+  it("exits 1 when --json and --verbose are both set", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ json: true, verbose: true }));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("--json");
+    expect(output).toContain("--verbose");
+    expect(output).toContain("cannot be used together");
   });
 
   // ── --insecure ───────────────────────────────────────────────────────
@@ -236,6 +300,17 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("--help");
   });
 
+  // ── merge: logger creation ──────────────────────────────────────────
+
+  it("creates logger with verbose and json flags for merge command", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "merge", verbose: true }));
+    mockLoadConfig.mockReturnValue({ token: "tok", handle: "user", server: "https://s.com" });
+
+    await runMain();
+
+    expect(mockCreateLogger).toHaveBeenCalledWith({ verbose: true, json: false });
+  });
+
   // ── merge: missing --emu-handle ──────────────────────────────────────
 
   it("exits 1 when merge is called without --emu-handle", async () => {
@@ -245,7 +320,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
+    const output = loggerOutput(mockLogger.error);
     expect(output).toContain("--emu-handle is required");
   });
 
@@ -258,7 +333,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
+    const output = loggerOutput(mockLogger.error);
     expect(output).toContain("No personal handle found");
     expect(output).toContain("chapa login");
   });
@@ -275,7 +350,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
+    const output = loggerOutput(mockLogger.error);
     expect(output).toContain("EMU token required");
     expect(output).toContain("--emu-token");
     expect(output).toContain("GITHUB_EMU_TOKEN");
@@ -293,7 +368,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
+    const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Not authenticated");
     expect(output).toContain("chapa login");
   });
@@ -316,7 +391,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
+    const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Failed to fetch EMU stats");
   });
 
@@ -346,8 +421,45 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
+    const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Server returned 401");
+  });
+
+  it("sends failure telemetry when upload fails", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue({
+      commitsTotal: 10,
+      reposContributed: 2,
+      prsMergedCount: 2,
+      activeDays: 5,
+      reviewsSubmittedCount: 1,
+    });
+    mockUploadSupplementalStats.mockResolvedValue({
+      success: false,
+      error: "Server returned 401: Invalid token",
+    });
+    mockClassifyError.mockReturnValue("auth");
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        success: false,
+        errorCategory: "auth",
+        targetHandle: "juan294",
+        sourceHandle: "corp_user",
+      }),
+    );
   });
 
   // ── merge: happy path ────────────────────────────────────────────────
@@ -367,26 +479,168 @@ describe("index.ts command dispatch", () => {
       commitsTotal: 42,
       prsMergedCount: 5,
       reviewsSubmittedCount: 3,
+      reposContributed: 7,
+      activeDays: 180,
     });
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
 
-    expect(mockFetchEmuStats).toHaveBeenCalledWith("corp_user", "emu-tok");
+    expect(mockFetchEmuStats).toHaveBeenCalledWith("corp_user", "emu-tok", expect.objectContaining({ logger: mockLogger }));
     expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
       expect.objectContaining({
         targetHandle: "juan294",
         sourceHandle: "corp_user",
         token: "auth-tok",
+        logger: mockLogger,
       }),
     );
 
-    const output = spyOutput(logSpy);
+    const output = loggerOutput(mockLogger.info);
     expect(output).toContain("Success!");
-    expect(output).toContain("42 commits");
-    expect(output).toContain("5 PRs merged");
-    expect(output).toContain("3 reviews");
+    expect(output).toContain("Stats merged for");
     expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("shows formatStatsSummary output in default merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue({
+      commitsTotal: 42,
+      prsMergedCount: 5,
+      reviewsSubmittedCount: 3,
+    });
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockFormatStatsSummary.mockReturnValue("  Commits: 42\n  Repos: 7");
+
+    await runMain();
+
+    expect(mockFormatStatsSummary).toHaveBeenCalled();
+    const output = loggerOutput(mockLogger.info);
+    expect(output).toContain("Commits: 42");
+    expect(output).toContain("Repos: 7");
+  });
+
+  it("sends success telemetry on successful merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue({
+      commitsTotal: 42,
+      reposContributed: 7,
+      prsMergedCount: 5,
+      activeDays: 180,
+      reviewsSubmittedCount: 3,
+    });
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        success: true,
+        targetHandle: "juan294",
+        sourceHandle: "corp_user",
+        stats: expect.objectContaining({ commitsTotal: 42 }),
+        timing: expect.objectContaining({ fetchMs: expect.any(Number) }),
+        cliVersion: expect.any(String),
+      }),
+    );
+  });
+
+  // ── merge: --json output ─────────────────────────────────────────────
+
+  it("outputs structured JSON on success when --json is set", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        json: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue({
+      commitsTotal: 42,
+      activeDays: 180,
+      prsMergedCount: 5,
+      prsMergedWeight: 8.2,
+      reviewsSubmittedCount: 3,
+      issuesClosedCount: 1,
+      linesAdded: 2340,
+      linesDeleted: 890,
+      reposContributed: 7,
+      totalStars: 12,
+      totalForks: 3,
+    });
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    // JSON goes to process.stdout.write, not console.log
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const jsonOutput = JSON.parse(written);
+    expect(jsonOutput.success).toBe(true);
+    expect(jsonOutput.targetHandle).toBe("juan294");
+    expect(jsonOutput.sourceHandle).toBe("corp_user");
+    expect(jsonOutput.stats.commitsTotal).toBe(42);
+    expect(jsonOutput.stats.reposContributed).toBe(7);
+    expect(jsonOutput.timing).toBeDefined();
+    expect(jsonOutput.cliVersion).toBeDefined();
+    // Logger info should NOT have been called for success message in JSON mode
+    // (createLogger with json=true suppresses info)
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("outputs JSON with error on failure when --json is set", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        json: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue({
+      commitsTotal: 10,
+      reposContributed: 2,
+      prsMergedCount: 1,
+      activeDays: 5,
+      reviewsSubmittedCount: 0,
+    });
+    mockUploadSupplementalStats.mockResolvedValue({
+      success: false,
+      error: "Server returned 500: Internal Server Error",
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const jsonOutput = JSON.parse(written);
+    expect(jsonOutput.success).toBe(false);
+    expect(jsonOutput.error).toContain("500");
   });
 
   // ── merge: uses config fallback for handle and token ─────────────────

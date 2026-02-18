@@ -10,6 +10,7 @@ export interface CliArgs {
   token?: string;
   server: string;
   verbose: boolean;
+  json: boolean;
   insecure: boolean;
   version: boolean;
   help: boolean;
@@ -36,6 +37,7 @@ export function parseArgs(argv: string[]): CliArgs {
       token: { type: "string" },
       server: { type: "string", default: DEFAULT_SERVER },
       verbose: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
       insecure: { type: "boolean", default: false },
       version: { type: "boolean", short: "v", default: false },
       help: { type: "boolean", short: "h", default: false },
@@ -51,6 +53,7 @@ export function parseArgs(argv: string[]): CliArgs {
     token: values.token as string | undefined,
     server: (values.server as string) ?? DEFAULT_SERVER,
     verbose: (values.verbose as boolean) ?? false,
+    json: (values.json as boolean) ?? false,
     insecure: (values.insecure as boolean) ?? false,
     version: (values.version as boolean) ?? false,
     help: (values.help as boolean) ?? false,
