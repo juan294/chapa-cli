@@ -153,12 +153,11 @@ describe("fetchEmuStats", () => {
 
     // Should log only the message string, not the full error object
     expect(errorSpy).toHaveBeenCalledWith(
-      "[cli] fetch error:",
-      "Network error",
+      "[cli] fetch error: Network error",
     );
     // Ensure the full error object (which could contain tokens) is NOT logged
     expect(errorSpy).not.toHaveBeenCalledWith(
-      "[cli] fetch error:",
+      expect.anything(),
       sensitiveError,
     );
 
@@ -293,6 +292,73 @@ describe("fetchEmuStats", () => {
     // The body portion (after the prefix) should be at most 200 chars + "..."
     const bodyPart = loggedMessage.replace("[cli] GraphQL errors for corp_user: ", "");
     expect(bodyPart.length).toBeLessThanOrEqual(203); // 200 + "..."
+
+    errorSpy.mockRestore();
+  });
+
+  it("does not double-log errors when logger is provided", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const mockLogger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      time: vi.fn(),
+      timeEnd: vi.fn().mockReturnValue(0),
+      getTimings: vi.fn().mockReturnValue({}),
+    };
+
+    mockFetch.mockRejectedValue(new Error("fetch failed"));
+
+    await fetchEmuStats("corp_user", "ghp_token", { logger: mockLogger });
+
+    // Logger should receive the error
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+    expect(mockLogger.error).toHaveBeenCalledWith("[cli] fetch error: fetch failed");
+    // console.error should NOT be called — logger handles it
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  it("does not double-log HTTP errors when logger is provided", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const mockLogger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      time: vi.fn(),
+      timeEnd: vi.fn().mockReturnValue(0),
+      getTimings: vi.fn().mockReturnValue({}),
+    };
+
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => "Unauthorized",
+    });
+
+    await fetchEmuStats("corp_user", "bad_token", { logger: mockLogger });
+
+    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  it("includes error.cause in message for better debugging", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const rootCause = new Error("ECONNREFUSED 140.82.121.3:443");
+    const fetchError = new Error("fetch failed", { cause: rootCause });
+
+    mockFetch.mockRejectedValue(fetchError);
+
+    await fetchEmuStats("corp_user", "ghp_token");
+
+    const logged = errorSpy.mock.calls[0]![0] as string;
+    expect(logged).toContain("fetch failed");
+    expect(logged).toContain("ECONNREFUSED");
 
     errorSpy.mockRestore();
   });
