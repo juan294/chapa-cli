@@ -202,32 +202,22 @@ function mapSatisfaction(chart: Record<string, number>): {
 export function parseInsightsHtml(html: string): InsightsUpload {
   const { document: doc } = parseHTML(html);
 
-  // Subtitle: period + session count
   const subtitleEl = doc.querySelector(".subtitle");
   const subtitle = parseSubtitle(subtitleEl?.textContent ?? "");
 
-  // Volume stats
   const volume = extractVolumeStats(doc);
-  // Use subtitle messages as fallback if stats row is missing
   if (volume.messages === 0 && subtitle.messages > 0) {
     volume.messages = subtitle.messages;
   }
 
-  // Bar charts
   const toolUsage = extractBarChart(doc, "Top Tools Used");
   const sessionTypes = extractBarChart(doc, "Session Types");
   const outcomesChart = extractBarChart(doc, "Outcomes");
   const frictionChart = extractBarChart(doc, "Primary Friction Types");
   const satisfactionChart = extractBarChart(doc, "Inferred Satisfaction");
   const toolErrors = extractBarChart(doc, "Tool Errors Encountered");
-
-  // Multi-clauding
   const multiClauding = parseMultiClauding(doc);
-
-  // Response time
   const responseTime = parseResponseTime(doc);
-
-  // Total tool calls = sum of tool usage values
   const totalToolCalls = Object.values(toolUsage).reduce((a, b) => a + b, 0);
 
   return {

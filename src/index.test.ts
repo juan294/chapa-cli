@@ -15,11 +15,10 @@ const mockClassifyError = vi.hoisted(() => vi.fn());
 const mockParseInsightsHtml = vi.hoisted(() => vi.fn());
 const mockUploadInsights = vi.hoisted(() => vi.fn());
 const mockTriggerRecalculate = vi.hoisted(() => vi.fn());
-const mockExistsSync = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 const mockResolve = vi.hoisted(() => vi.fn());
 
-vi.mock("./cli.js", () => ({ parseArgs: mockParseArgs }));
+vi.mock("./cli.js", () => ({ parseArgs: mockParseArgs, DEFAULT_SERVER: "https://chapa.thecreativetoken.com" }));
 vi.mock("./auth.js", () => ({ resolveToken: mockResolveToken }));
 vi.mock("./fetch-emu.js", () => ({ fetchEmuStats: mockFetchEmuStats }));
 vi.mock("./upload.js", () => ({ uploadSupplementalStats: mockUploadSupplementalStats }));
@@ -41,7 +40,7 @@ vi.mock("./telemetry.js", () => ({
 }));
 vi.mock("node:fs", async () => {
   const actual = await import("node:fs");
-  return { ...actual, existsSync: mockExistsSync, readFileSync: mockReadFileSync };
+  return { ...actual, readFileSync: mockReadFileSync };
 });
 vi.mock("node:path", async () => {
   const actual = await import("node:path");
@@ -177,7 +176,6 @@ describe("index.ts command dispatch", () => {
     });
     mockUploadInsights.mockResolvedValue({ success: false, error: "mock" });
     mockTriggerRecalculate.mockResolvedValue(undefined);
-    mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue("<html></html>");
     mockResolve.mockImplementation((p: string) => `/resolved/${p}`);
   });
@@ -789,7 +787,9 @@ describe("index.ts command dispatch", () => {
       defaultArgs({ command: "insights", file: "nonexistent.html", handle: "user", token: "tok" }),
     );
     mockLoadConfig.mockReturnValue(null);
-    mockExistsSync.mockReturnValue(false);
+    const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+    err.code = "ENOENT";
+    mockReadFileSync.mockImplementation(() => { throw err; });
 
     await runMain();
 

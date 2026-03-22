@@ -1,4 +1,4 @@
-import { parseArgs } from "./cli.js";
+import { parseArgs, DEFAULT_SERVER } from "./cli.js";
 import { resolveToken } from "./auth.js";
 import { fetchEmuStats } from "./fetch-emu.js";
 import { uploadSupplementalStats } from "./upload.js";
@@ -10,7 +10,7 @@ import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
 import { sendTelemetry, classifyError } from "./telemetry.js";
 import { randomUUID } from "node:crypto";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // Injected by tsup at build time; falls back for dev/test
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
     const config = loadConfig();
     const handle = args.handle ?? config?.handle;
     const authToken = args.token ?? config?.token;
-    const serverUrl = args.server !== "https://chapa.thecreativetoken.com" ? args.server : (config?.server ?? args.server);
+    const serverUrl = args.server !== DEFAULT_SERVER ? args.server : (config?.server ?? args.server);
 
     if (!args.file) {
       log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
@@ -109,18 +109,17 @@ async function main(): Promise<void> {
       process.exit(1);
     }
 
-    // Read HTML file
     const filePath = resolve(args.file);
-    if (!existsSync(filePath)) {
-      log.error(`Error: File not found: ${filePath}`);
-      process.exit(1);
-    }
-
     let html: string;
     try {
       html = readFileSync(filePath, "utf-8");
     } catch (err) {
-      log.error(`Error reading file: ${(err as Error).message}`);
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        log.error(`Error: File not found: ${filePath}`);
+      } else {
+        log.error(`Error reading file: ${(err as Error).message}`);
+      }
       process.exit(1);
     }
 
@@ -273,7 +272,7 @@ async function main(): Promise<void> {
   log.info(formatStatsSummary(emuStats));
 
   // Upload to Chapa
-  const serverUrl = args.server !== "https://chapa.thecreativetoken.com" ? args.server : (config?.server ?? args.server);
+  const serverUrl = args.server !== DEFAULT_SERVER ? args.server : (config?.server ?? args.server);
   log.info(`Uploading supplemental stats to ${serverUrl}...`);
   log.time("upload");
   const result = await uploadSupplementalStats({

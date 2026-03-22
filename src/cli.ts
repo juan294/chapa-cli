@@ -1,6 +1,6 @@
 import { parseArgs as nodeParseArgs } from "node:util";
 
-const DEFAULT_SERVER = "https://chapa.thecreativetoken.com";
+export const DEFAULT_SERVER = "https://chapa.thecreativetoken.com";
 
 export interface CliArgs {
   command: "merge" | "login" | "logout" | "insights" | null;
