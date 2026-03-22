@@ -309,3 +309,50 @@ export function formatStatsSummary(stats: StatsData): string {
   ];
   return lines.join("\n");
 }
+
+// ── Insights types ──────────────────────────────────────────────────────
+
+export interface InsightsUpload {
+  tool: "claude-code";
+  reportPeriod: {
+    start: string; // ISO date (YYYY-MM-DD)
+    end: string; // ISO date (YYYY-MM-DD)
+  };
+  volume: {
+    messages: number;
+    linesAdded: number;
+    linesDeleted: number;
+    files: number;
+    days: number;
+    msgsPerDay: number;
+  };
+  toolUsage: Record<string, number>;
+  sessionTypes: Record<string, number>;
+  outcomes: {
+    fullyAchieved: number;
+    mostlyAchieved: number;
+    partiallyAchieved: number;
+  };
+  friction: {
+    buggyCode: number;
+    wrongApproach: number;
+    misunderstoodRequest: number;
+  };
+  satisfaction: {
+    dissatisfied: number;
+    likelySatisfied: number;
+    satisfied: number;
+  };
+  multiClauding: {
+    overlapEvents: number;
+    sessionsInvolved: number;
+    messagePercent: number; // 0-100
+  };
+  responseTime: {
+    medianSeconds: number;
+    averageSeconds: number;
+  };
+  toolErrors: Record<string, number>;
+  totalSessions: number;
+  totalToolCalls: number;
+}

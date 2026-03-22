@@ -2,12 +2,16 @@ import { parseArgs } from "./cli.js";
 import { resolveToken } from "./auth.js";
 import { fetchEmuStats } from "./fetch-emu.js";
 import { uploadSupplementalStats } from "./upload.js";
+import { parseInsightsHtml, uploadInsights, triggerRecalculate } from "./insights.js";
 import { loadConfig, deleteConfig } from "./config.js";
 import { login } from "./login.js";
 import { createLogger } from "./logger.js";
 import { formatStatsSummary } from "./shared.js";
+import type { InsightsUpload } from "./shared.js";
 import { sendTelemetry, classifyError } from "./telemetry.js";
 import { randomUUID } from "node:crypto";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 // Injected by tsup at build time; falls back for dev/test
 declare const __CLI_VERSION__: string;
@@ -21,15 +25,17 @@ Commands:
   chapa login                          Authenticate with Chapa (opens browser)
   chapa logout                         Clear stored credentials
   chapa merge --emu-handle <emu>       Merge EMU stats into your badge
+  chapa insights --file <path>         Upload Claude Code insights report
 
 Options:
   --emu-handle <handle>   Your EMU GitHub handle (required for merge)
   --emu-token <token>     EMU GitHub token (or set GITHUB_EMU_TOKEN)
   --handle <handle>       Override personal handle (auto-detected from login)
   --token <token>         Override auth token (auto-detected from login)
+  --file <path>           Path to Claude Code insights HTML file (required for insights)
   --server <url>          Chapa server URL (default: https://chapa.thecreativetoken.com)
   --verbose               Show detailed debug output and timings
-  --json                  Output merge result as JSON (for scripting)
+  --json                  Output result as JSON (for scripting)
   --insecure              Skip TLS certificate verification (corporate networks)
   --version, -v           Show version number
   --help, -h              Show this help message
@@ -78,9 +84,145 @@ async function main(): Promise<void> {
     return;
   }
 
+  // ── insights ────────────────────────────────────────────────────────
+  if (args.command === "insights") {
+    const log = createLogger({ verbose: args.verbose, json: args.json });
+    log.time("total");
+
+    const config = loadConfig();
+    const handle = args.handle ?? config?.handle;
+    const authToken = args.token ?? config?.token;
+    const serverUrl = args.server !== "https://chapa.thecreativetoken.com" ? args.server : (config?.server ?? args.server);
+
+    if (!args.file) {
+      log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
+      process.exit(1);
+    }
+
+    if (!handle) {
+      log.error("Error: No personal handle found. Run 'chapa login' first, or pass --handle.");
+      process.exit(1);
+    }
+
+    if (!authToken) {
+      log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
+      process.exit(1);
+    }
+
+    // Read HTML file
+    const filePath = resolve(args.file);
+    if (!existsSync(filePath)) {
+      log.error(`Error: File not found: ${filePath}`);
+      process.exit(1);
+    }
+
+    let html: string;
+    try {
+      html = readFileSync(filePath, "utf-8");
+    } catch (err) {
+      log.error(`Error reading file: ${(err as Error).message}`);
+      process.exit(1);
+    }
+
+    // Parse HTML
+    log.info("Parsing insights report...");
+    log.time("parse");
+    let data: InsightsUpload;
+    try {
+      data = parseInsightsHtml(html);
+    } catch (err) {
+      log.error(`Error parsing insights HTML: ${(err as Error).message}`);
+      process.exit(1);
+    }
+    const parseMs = log.timeEnd("parse");
+
+    // Validate minimal viability
+    if (data.totalSessions < 1) {
+      log.error("Error: Could not extract session data from HTML. Is this a valid Claude Code insights report?");
+      process.exit(1);
+    }
+
+    log.debug(`Parsed: ${data.totalSessions} sessions, ${data.volume.messages} messages, ${data.totalToolCalls} tool calls`);
+    log.debug(`Period: ${data.reportPeriod.start} to ${data.reportPeriod.end}`);
+
+    // Upload
+    log.info(`Uploading insights to ${serverUrl}...`);
+    log.time("upload");
+    const result = await uploadInsights({
+      data,
+      token: authToken,
+      serverUrl,
+      logger: log,
+    });
+    const uploadMs = log.timeEnd("upload");
+
+    // Trigger recalculate (non-blocking, fire-and-forget)
+    if (result.success) {
+      triggerRecalculate(serverUrl, authToken, log);
+    }
+
+    const totalMs = log.timeEnd("total");
+
+    if (!result.success) {
+      if (args.json) {
+        process.stdout.write(JSON.stringify({
+          success: false,
+          handle,
+          file: filePath,
+          error: result.error,
+          timing: { parseMs: round(parseMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+          cliVersion: VERSION,
+        }, null, 2) + "\n");
+      } else {
+        log.error(`Error: ${result.error}`);
+      }
+      process.exit(1);
+    }
+
+    if (args.json) {
+      process.stdout.write(JSON.stringify({
+        success: true,
+        handle,
+        file: filePath,
+        craftScore: result.craftScore,
+        timing: { parseMs: round(parseMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+        cliVersion: VERSION,
+      }, null, 2) + "\n");
+    } else {
+      const cs = result.craftScore;
+      if (cs) {
+        log.info(`Craft Score: ${cs.craftScore}/100 (${cs.tier})`);
+        log.info(`  Proficiency:    ${cs.dimensions.proficiency}`);
+        log.info(`  Effectiveness:  ${cs.dimensions.effectiveness}`);
+        log.info(`  Sophistication: ${cs.dimensions.sophistication}`);
+        log.info(`Period: ${cs.reportPeriod.start} to ${cs.reportPeriod.end}`);
+      }
+      log.info(`Success! Insights uploaded for ${handle} (${(totalMs / 1000).toFixed(1)}s)`);
+    }
+
+    // Telemetry (non-blocking, fire-and-forget)
+    sendTelemetry(serverUrl, {
+      operationId: randomUUID(),
+      targetHandle: handle,
+      sourceHandle: handle,
+      success: true,
+      stats: {
+        commitsTotal: 0,
+        reposContributed: 0,
+        prsMergedCount: 0,
+        activeDays: data.volume.days,
+        reviewsSubmittedCount: 0,
+      },
+      timing: { fetchMs: 0, uploadMs: round(uploadMs), totalMs: round(totalMs) },
+      cliVersion: VERSION,
+    });
+
+    return;
+  }
+
   // ── merge ────────────────────────────────────────────────────────────
   if (args.command !== "merge") {
-    console.error("Usage: chapa <login | logout | merge> [options]");
+    console.error("Usage: chapa <login | logout | merge | insights> [options]");
     console.error("\nRun 'chapa --help' for more information.");
     process.exit(1);
   }

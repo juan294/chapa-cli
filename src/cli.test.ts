@@ -81,4 +81,29 @@ describe("parseArgs", () => {
     const args = parseArgs(["merge", "--emu-handle", "corp"]);
     expect(args.json).toBe(false);
   });
+
+  it("parses insights command with --file", () => {
+    const args = parseArgs(["insights", "--file", "/path/to/report.html"]);
+    expect(args.command).toBe("insights");
+    expect(args.file).toBe("/path/to/report.html");
+  });
+
+  it("parses insights with other flags", () => {
+    const args = parseArgs([
+      "insights",
+      "--file", "report.html",
+      "--json",
+      "--server", "http://localhost:3000",
+    ]);
+    expect(args.command).toBe("insights");
+    expect(args.file).toBe("report.html");
+    expect(args.json).toBe(true);
+    expect(args.server).toBe("http://localhost:3000");
+  });
+
+  it("file defaults to undefined", () => {
+    const args = parseArgs(["insights"]);
+    expect(args.command).toBe("insights");
+    expect(args.file).toBeUndefined();
+  });
 });
