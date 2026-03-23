@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { saveConfig } from "./config.js";
 
 export const POLL_INTERVAL_MS = 2000;
@@ -26,6 +28,29 @@ interface PollResponse {
 interface LoginOptions {
   verbose?: boolean;
   insecure?: boolean;
+}
+
+export function openBrowser(url: string): void {
+  const cmd = process.platform === "darwin"
+    ? "open"
+    : process.platform === "win32"
+      ? "start"
+      : "xdg-open";
+
+  // Windows 'start' treats the first quoted arg as a window title
+  const args = process.platform === "win32" ? ["", url] : [url];
+
+  spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+}
+
+export function waitForEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question("", () => {
+      rl.close();
+      resolve();
+    });
+  });
 }
 
 const TLS_ERROR_PATTERNS = [
@@ -83,11 +108,19 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
   const sessionId = randomUUID();
   const authorizeUrl = `${baseUrl}/cli/authorize?session=${sessionId}`;
 
-  console.log("\nOpen this URL in a browser where your personal GitHub account is logged in:");
   console.log(`\n  ${authorizeUrl}\n`);
   console.log("Tip: If your default browser has your work (EMU) account,");
   console.log("     use a different browser or an incognito/private window.\n");
-  console.log("Waiting for approval...");
+
+  if (process.stdin.isTTY) {
+    console.log("Press ENTER to open in the browser...");
+    await waitForEnter();
+    openBrowser(authorizeUrl);
+    console.log("Opened browser. Waiting for approval...");
+  } else {
+    console.log("Open the URL above in your browser.");
+    console.log("Waiting for approval...");
+  }
 
   let serverErrorLogged = false;
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {

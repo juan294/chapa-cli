@@ -2,18 +2,65 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock dependencies
 const mockSaveConfig = vi.hoisted(() => vi.fn());
+const mockSpawn = vi.hoisted(() => vi.fn());
+const mockCreateInterface = vi.hoisted(() => vi.fn());
 
 vi.mock("./config.js", () => ({
   saveConfig: mockSaveConfig,
 }));
 
-import { login, POLL_INTERVAL_MS } from "./login";
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+}));
+
+vi.mock("node:readline", () => ({
+  createInterface: mockCreateInterface,
+}));
+
+import { login, POLL_INTERVAL_MS, openBrowser } from "./login";
+
+describe("openBrowser", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSpawn.mockReturnValue({ unref: vi.fn() });
+  });
+
+  it("calls spawn with platform-appropriate command", () => {
+    openBrowser("https://example.com/auth");
+
+    expect(mockSpawn).toHaveBeenCalledOnce();
+    const [cmd, args] = mockSpawn.mock.calls[0]!;
+
+    if (process.platform === "darwin") {
+      expect(cmd).toBe("open");
+      expect(args).toEqual(["https://example.com/auth"]);
+    } else if (process.platform === "win32") {
+      expect(cmd).toBe("start");
+      expect(args).toEqual(["", "https://example.com/auth"]);
+    } else {
+      expect(cmd).toBe("xdg-open");
+      expect(args).toEqual(["https://example.com/auth"]);
+    }
+  });
+});
 
 describe("login", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn());
+
+    // Mock readline to resolve immediately (simulates user pressing ENTER)
+    mockCreateInterface.mockReturnValue({
+      question: (_prompt: string, cb: () => void) => cb(),
+      close: vi.fn(),
+    });
+
+    // Mock spawn (for openBrowser)
+    mockSpawn.mockReturnValue({ unref: vi.fn() });
+
+    // Default: TTY mode (interactive terminal)
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
   });
 
   afterEach(() => {
@@ -39,7 +86,7 @@ describe("login", () => {
 
     const allOutput = logSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allOutput).toContain("chapa.thecreativetoken.com/cli/authorize?session=");
-    expect(allOutput).toContain("personal GitHub account");
+    expect(allOutput).toContain("Press ENTER to open in the browser");
     logSpy.mockRestore();
   });
 
@@ -417,6 +464,50 @@ describe("login", () => {
     const allErrors = errorSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allErrors).toContain("--insecure");
     errorSpy.mockRestore();
+  });
+
+  it("opens browser after user presses ENTER in TTY mode", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      ),
+    );
+
+    const p = login("https://example.com");
+    await advancePoll();
+    await p;
+
+    expect(mockSpawn).toHaveBeenCalledOnce();
+    const [cmd, args] = mockSpawn.mock.calls[0]!;
+    const urlArg = (args as string[]).find((a: string) => a.includes("example.com/cli/authorize"));
+    expect(urlArg).toBeDefined();
+    if (process.platform === "darwin") {
+      expect(cmd).toBe("open");
+    }
+  });
+
+  it("does not prompt or open browser in non-TTY mode", async () => {
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    const logSpy = vi.spyOn(console, "log");
+
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      ),
+    );
+
+    const p = login("https://example.com");
+    await advancePoll();
+    await p;
+
+    const allOutput = logSpy.mock.calls.map(c => c.join(" ")).join("\n");
+    expect(allOutput).not.toContain("Press ENTER");
+    expect(allOutput).toContain("Open the URL above");
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(mockCreateInterface).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 
   it("does not suggest --insecure when insecure is already enabled", async () => {
