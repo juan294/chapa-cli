@@ -1,7 +1,8 @@
 import type { StatsData } from "./shared.js";
+import { stripTrailingSlashes } from "./shared.js";
 import type { Logger } from "./logger.js";
 
-export interface UploadOptions {
+interface UploadOptions {
   targetHandle: string;
   sourceHandle: string;
   stats: StatsData;
@@ -10,7 +11,7 @@ export interface UploadOptions {
   logger?: Logger;
 }
 
-export interface UploadResult {
+interface UploadResult {
   success: boolean;
   error?: string;
   serverResponse?: unknown;
@@ -19,7 +20,7 @@ export interface UploadResult {
 export async function uploadSupplementalStats(
   opts: UploadOptions,
 ): Promise<UploadResult> {
-  const baseUrl = opts.serverUrl.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(opts.serverUrl);
   const url = `${baseUrl}/api/supplemental`;
   const log = opts.logger;
 

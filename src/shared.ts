@@ -168,6 +168,62 @@ query($login: String!, $since: DateTime!, $until: DateTime!, $historySince: GitT
 `;
 
 // ---------------------------------------------------------------------------
+// URL helpers
+// ---------------------------------------------------------------------------
+
+/** Remove trailing slashes from a URL string. */
+export function stripTrailingSlashes(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// Error chain utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk the error `.cause` chain and return the deepest message.
+ * Node.js `fetch()` wraps real errors: Error("fetch failed", { cause: Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE") })
+ */
+export function getRootErrorMessage(err: unknown): string {
+  let current = err;
+  let message = "";
+  while (current instanceof Error) {
+    message = current.message;
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return message;
+}
+
+/**
+ * Collect all messages and error codes from the cause chain (for TLS pattern matching).
+ * Includes both .message and .code from each error in the chain.
+ */
+export function getFullErrorChain(err: unknown): string {
+  const parts: string[] = [];
+  let current = err;
+  while (current instanceof Error) {
+    parts.push(current.message);
+    const code = (current as Error & { code?: string }).code;
+    if (code) parts.push(code);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return parts.join(" | ");
+}
+
+/** Extract a useful error message, walking error.cause chain for root cause. */
+export function extractErrorDetail(err: Error): string {
+  const parts = [err.message];
+  let current: unknown = err.cause;
+  while (current instanceof Error) {
+    if (current.message && current.message !== err.message) {
+      parts.push(current.message);
+    }
+    current = current.cause;
+  }
+  return parts.join(" → ");
+}
+
+// ---------------------------------------------------------------------------
 // Scoring helpers
 // ---------------------------------------------------------------------------
 

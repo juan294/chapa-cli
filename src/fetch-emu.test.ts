@@ -363,6 +363,26 @@ describe("fetchEmuStats", () => {
     errorSpy.mockRestore();
   });
 
+  it("falls back gracefully when res.text() rejects on HTTP error", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => { throw new Error("body stream exhausted"); },
+    });
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+    expect(result).toBeNull();
+
+    // Should still log something meaningful despite text() failing
+    const logged = errorSpy.mock.calls[0]![0] as string;
+    expect(logged).toContain("500");
+    expect(logged).toContain("(unreadable)");
+
+    errorSpy.mockRestore();
+  });
+
   it("filters out null PR nodes", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

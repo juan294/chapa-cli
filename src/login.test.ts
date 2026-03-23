@@ -523,4 +523,59 @@ describe("login", () => {
 
     mockExit.mockRestore();
   });
+
+  it("times out after MAX_POLL_ATTEMPTS with persistent pending status", { timeout: 30000 }, async () => {
+    vi.useRealTimers(); // Switch to real timers — fake timers struggle with 150 iterations
+
+    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("process.exit");
+    }) as never);
+    const errorSpy = vi.spyOn(console, "error");
+
+    // Override the sleep by mocking setTimeout to resolve immediately
+    // so we don't actually wait 300 seconds
+    const origSetTimeout = globalThis.setTimeout;
+    vi.stubGlobal("setTimeout", ((fn: () => void) => origSetTimeout(fn, 0)) as typeof setTimeout);
+
+    // Always return pending
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "pending" }), { status: 200 }),
+    ));
+
+    await expect(login("https://example.com")).rejects.toThrow("process.exit");
+    expect(mockExit).toHaveBeenCalledWith(1);
+
+    const allErrors = errorSpy.mock.calls.map(c => c.join(" ")).join("\n");
+    expect(allErrors).toContain("Timed out");
+
+    vi.stubGlobal("setTimeout", origSetTimeout);
+    mockExit.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("prints a progress dot after every poll, not every 5 polls", async () => {
+    const writeSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+    let callCount = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      callCount++;
+      if (callCount < 4) {
+        return new Response(JSON.stringify({ status: "pending" }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      );
+    });
+
+    const p = login("https://example.com");
+    for (let i = 0; i < 4; i++) await advancePoll();
+    await p;
+
+    // With 3 pending polls, we should get dots starting from poll index 1
+    // (poll 0 is skipped as the initial poll, dots start at i > 0)
+    const dots = writeSpy.mock.calls.filter(c => c[0] === ".").length;
+    // Previously only every 5 polls got a dot; now every poll after the first
+    expect(dots).toBeGreaterThanOrEqual(2);
+    writeSpy.mockRestore();
+  });
 });
