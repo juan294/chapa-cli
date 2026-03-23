@@ -106,4 +106,8 @@ describe("parseArgs", () => {
     expect(args.command).toBe("insights");
     expect(args.file).toBeUndefined();
   });
+
+  it("throws on unknown flags", () => {
+    expect(() => parseArgs(["merge", "--bogus"])).toThrow();
+  });
 });
