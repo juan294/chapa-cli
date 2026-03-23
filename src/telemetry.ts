@@ -1,3 +1,5 @@
+import { stripTrailingSlashes } from "./shared.js";
+
 export interface TelemetryPayload {
   operationId: string;
   targetHandle: string;
@@ -33,7 +35,7 @@ export async function sendTelemetry(
   serverUrl: string,
   payload: TelemetryPayload,
 ): Promise<void> {
-  const baseUrl = serverUrl.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(serverUrl);
   const url = `${baseUrl}/api/telemetry`;
 
   try {

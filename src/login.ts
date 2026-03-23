@@ -9,6 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import { saveConfig } from "./config.js";
+import { stripTrailingSlashes, getRootErrorMessage, getFullErrorChain } from "./shared.js";
 
 export const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 150; // 5 minutes at 2s intervals
@@ -46,40 +47,10 @@ function isTlsError(message: string): boolean {
   return TLS_ERROR_PATTERNS.some((p) => message.includes(p));
 }
 
-/**
- * Walk the error `.cause` chain and return the deepest message.
- * Node.js `fetch()` wraps real errors: Error("fetch failed", { cause: Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE") })
- */
-function getRootErrorMessage(err: unknown): string {
-  let current = err;
-  let message = "";
-  while (current instanceof Error) {
-    message = current.message;
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return message;
-}
-
-/**
- * Collect all messages and error codes from the cause chain (for TLS pattern matching).
- * Includes both .message and .code from each error in the chain.
- */
-function getFullErrorChain(err: unknown): string {
-  const parts: string[] = [];
-  let current = err;
-  while (current instanceof Error) {
-    parts.push(current.message);
-    const code = (current as Error & { code?: string }).code;
-    if (code) parts.push(code);
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return parts.join(" | ");
-}
-
 export async function login(serverUrl: string, opts: LoginOptions = {}): Promise<void> {
   const { verbose = false, insecure = false } = opts;
 
-  const baseUrl = serverUrl.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(serverUrl);
   const sessionId = randomUUID();
   const authorizeUrl = `${baseUrl}/cli/authorize?session=${sessionId}`;
 
@@ -93,8 +64,8 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
     await sleep(POLL_INTERVAL_MS);
 
-    // Progress feedback every 5 polls
-    if (i > 0 && i % 5 === 0) {
+    // Progress feedback every poll
+    if (i > 0) {
       process.stdout.write(".");
     }
 
