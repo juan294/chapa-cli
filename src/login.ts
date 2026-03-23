@@ -50,6 +50,7 @@ export function waitForEnter(): Promise<void> {
     rl.on("close", () => resolve());
     rl.question("", () => {
       rl.close();
+      resolve(); // Also resolve directly — Promise.resolve is idempotent
     });
   });
 }
