@@ -9,6 +9,7 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   banner: { js: "#!/usr/bin/env node" },
+  noExternal: ["linkedom"],
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
   },
