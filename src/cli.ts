@@ -19,14 +19,16 @@ export interface CliArgs {
 const VALID_COMMANDS = ["merge", "login", "logout"] as const;
 
 export function parseArgs(argv: string[]): CliArgs {
-  // Extract positional command before flags
-  const positional = argv.find((a) => !a.startsWith("--") && !a.startsWith("-"));
-  const command = VALID_COMMANDS.includes(positional as (typeof VALID_COMMANDS)[number])
-    ? (positional as CliArgs["command"])
+  // Extract leading command (must be first argument, before any flags)
+  const first = argv[0];
+  const hasPositionalFirst = first != null && !first.startsWith("-");
+  const command = hasPositionalFirst &&
+    VALID_COMMANDS.includes(first as (typeof VALID_COMMANDS)[number])
+    ? (first as CliArgs["command"])
     : null;
 
-  // Remove positional from argv for nodeParseArgs
-  const flagArgs = argv.filter((a) => a !== positional || a.startsWith("--"));
+  // Strip the positional command slot so nodeParseArgs only sees flags
+  const flagArgs = hasPositionalFirst ? argv.slice(1) : argv;
 
   const { values } = nodeParseArgs({
     args: flagArgs,
@@ -42,7 +44,7 @@ export function parseArgs(argv: string[]): CliArgs {
       version: { type: "boolean", short: "v", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
-    strict: false,
+    strict: true,
   });
 
   return {

@@ -81,4 +81,8 @@ describe("parseArgs", () => {
     const args = parseArgs(["merge", "--emu-handle", "corp"]);
     expect(args.json).toBe(false);
   });
+
+  it("throws on unknown flags", () => {
+    expect(() => parseArgs(["merge", "--bogus"])).toThrow();
+  });
 });
