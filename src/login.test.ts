@@ -9,18 +9,34 @@ vi.mock("./config.js", () => ({
 
 import { login, POLL_INTERVAL_MS } from "./login";
 
+// Injected test doubles (avoid mocking node:readline/node:child_process built-ins)
+const mockOpenBrowser = vi.fn();
+const mockWaitForEnter = vi.fn().mockResolvedValue(undefined);
+
+const loginOpts = (overrides: Record<string, unknown> = {}) => ({
+  _openBrowser: mockOpenBrowser,
+  _waitForEnter: mockWaitForEnter,
+  ...overrides,
+});
+
 describe("login", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn());
+
+    // Default: TTY mode (interactive terminal)
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  function advancePoll() {
+  async function advancePoll() {
+    // Flush microtasks first — on Node 18, await in login() (e.g., await _waitForEnter())
+    // may not resolve before advanceTimersByTimeAsync processes fake timers.
+    await Promise.resolve();
     return vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
   }
 
@@ -33,13 +49,13 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://chapa.thecreativetoken.com");
+    const p = login("https://chapa.thecreativetoken.com", loginOpts());
     await advancePoll();
     await p;
 
     const allOutput = logSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allOutput).toContain("chapa.thecreativetoken.com/cli/authorize?session=");
-    expect(allOutput).toContain("personal GitHub account");
+    expect(allOutput).toContain("Press ENTER to open in the browser");
     logSpy.mockRestore();
   });
 
@@ -51,7 +67,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await p;
 
@@ -70,7 +86,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com///");
+    const p = login("https://example.com///", loginOpts());
     await advancePoll();
     await p;
 
@@ -92,7 +108,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll(); // poll 1 -> pending
     await advancePoll(); // poll 2 -> pending
     await advancePoll(); // poll 3 -> approved
@@ -116,7 +132,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     for (let i = 0; i < 6; i++) await advancePoll();
     await p;
 
@@ -142,7 +158,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll(); // poll 1 -> 503
     await advancePoll(); // poll 2 -> approved
     await p;
@@ -166,7 +182,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { verbose: true });
+    const p = login("https://example.com", loginOpts({ verbose: true }));
     await advancePoll(); // poll 1 -> pending
     await advancePoll(); // poll 2 -> pending
     await advancePoll(); // poll 3 -> approved
@@ -194,7 +210,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { verbose: true });
+    const p = login("https://example.com", loginOpts({ verbose: true }));
     await advancePoll(); // poll 1 -> network error
     await advancePoll(); // poll 2 -> approved
     await p;
@@ -219,7 +235,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com", { insecure: true });
+    const p = login("https://example.com", loginOpts({ insecure: true }));
     await advancePoll();
     await p;
 
@@ -250,7 +266,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll(); // poll 1 -> TLS error
     await advancePoll(); // poll 2 -> approved
     await p;
@@ -275,7 +291,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -299,7 +315,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -325,7 +341,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { verbose: true });
+    const p = login("https://example.com", loginOpts({ verbose: true }));
     await advancePoll();
     await advancePoll();
     await p;
@@ -351,7 +367,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -381,7 +397,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -409,7 +425,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -417,6 +433,46 @@ describe("login", () => {
     const allErrors = errorSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allErrors).toContain("--insecure");
     errorSpy.mockRestore();
+  });
+
+  it("opens browser after user presses ENTER in TTY mode", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      ),
+    );
+
+    const p = login("https://example.com", loginOpts());
+    await advancePoll();
+    await p;
+
+    expect(mockOpenBrowser).toHaveBeenCalledOnce();
+    const url = mockOpenBrowser.mock.calls[0]![0] as string;
+    expect(url).toContain("example.com/cli/authorize");
+  });
+
+  it("does not prompt or open browser in non-TTY mode", async () => {
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    const logSpy = vi.spyOn(console, "log");
+
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      ),
+    );
+
+    const p = login("https://example.com", loginOpts());
+    await advancePoll();
+    await p;
+
+    const allOutput = logSpy.mock.calls.map(c => c.join(" ")).join("\n");
+    expect(allOutput).not.toContain("Press ENTER");
+    expect(allOutput).toContain("Open the URL above");
+    expect(mockOpenBrowser).not.toHaveBeenCalled();
+    expect(mockWaitForEnter).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 
   it("does not suggest --insecure when insecure is already enabled", async () => {
@@ -434,7 +490,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { insecure: true });
+    const p = login("https://example.com", loginOpts({ insecure: true }));
     await advancePoll();
     await advancePoll();
     await p;
@@ -462,7 +518,7 @@ describe("login", () => {
       new Response(JSON.stringify({ status: "expired" }), { status: 200 }),
     );
 
-    await expect(login("https://example.com")).rejects.toThrow("process.exit");
+    await expect(login("https://example.com", loginOpts())).rejects.toThrow("process.exit");
     expect(mockExit).toHaveBeenCalledWith(1);
 
     mockExit.mockRestore();

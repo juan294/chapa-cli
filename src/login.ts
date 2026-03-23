@@ -8,6 +8,8 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { saveConfig } from "./config.js";
 
 export const POLL_INTERVAL_MS = 2000;
@@ -26,6 +28,34 @@ interface PollResponse {
 interface LoginOptions {
   verbose?: boolean;
   insecure?: boolean;
+  /** @internal — test injection points */
+  _openBrowser?: (url: string) => void;
+  _waitForEnter?: () => Promise<void>;
+}
+
+export function openBrowser(url: string): void {
+  const cmd = process.platform === "darwin"
+    ? "open"
+    : process.platform === "win32"
+      ? "start"
+      : "xdg-open";
+
+  // Windows 'start' treats the first quoted arg as a window title
+  const args = process.platform === "win32" ? ["", url] : [url];
+
+  const child = spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  child.unref();
+}
+
+export function waitForEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.on("close", () => resolve());
+    rl.question("", () => {
+      rl.close();
+      resolve(); // Also resolve directly — Promise.resolve is idempotent
+    });
+  });
 }
 
 const TLS_ERROR_PATTERNS = [
@@ -77,17 +107,25 @@ function getFullErrorChain(err: unknown): string {
 }
 
 export async function login(serverUrl: string, opts: LoginOptions = {}): Promise<void> {
-  const { verbose = false, insecure = false } = opts;
+  const { verbose = false, insecure = false, _openBrowser = openBrowser, _waitForEnter = waitForEnter } = opts;
 
   const baseUrl = serverUrl.replace(/\/+$/, "");
   const sessionId = randomUUID();
   const authorizeUrl = `${baseUrl}/cli/authorize?session=${sessionId}`;
 
-  console.log("\nOpen this URL in a browser where your personal GitHub account is logged in:");
   console.log(`\n  ${authorizeUrl}\n`);
   console.log("Tip: If your default browser has your work (EMU) account,");
   console.log("     use a different browser or an incognito/private window.\n");
-  console.log("Waiting for approval...");
+
+  if (process.stdin.isTTY) {
+    console.log("Press ENTER to open in the browser...");
+    await _waitForEnter();
+    _openBrowser(authorizeUrl);
+    console.log("Opened browser. Waiting for approval...");
+  } else {
+    console.log("Open the URL above in your browser.");
+    console.log("Waiting for approval...");
+  }
 
   let serverErrorLogged = false;
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
