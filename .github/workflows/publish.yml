@@ -1,15 +1,8 @@
 # Publish to npm when a GitHub Release is published.
 #
-# npm 2FA considerations:
-# - If the npm account uses "Require 2FA for authorization and publishing"
-#   (the strictest level), automated publishing will FAIL because npm
-#   demands an OTP for every publish, which CI cannot provide.
-# - If the npm account uses "Require 2FA for authorization only" (the
-#   default when 2FA is enabled), an automation or granular access token
-#   stored in NPM_TOKEN can publish without an OTP.
-# - Recommendation: use a granular access token scoped to this package
-#   with read-write permissions. The token-expiry-reminder workflow
-#   tracks rotation for this token.
+# Uses an npm automation token (NPM_TOKEN secret) which bypasses 2FA/OTP.
+# Generate a granular access token scoped to this package with read-write
+# permissions. The token-expiry-reminder workflow tracks rotation.
 
 name: Publish to npm
 
@@ -22,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -44,6 +36,6 @@ jobs:
 
       - run: pnpm run build
 
-      - run: npm publish --provenance --access public
+      - run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

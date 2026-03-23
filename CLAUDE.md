@@ -8,24 +8,27 @@ chapa-cli is an open-source CLI tool that merges GitHub Enterprise Managed User 
 
 ```
 src/
-├── index.ts       # CLI entry point, command dispatch
-├── cli.ts         # Argument parsing (Node parseArgs)
-├── shared.ts      # Types, GraphQL query, stats aggregation
-├── login.ts       # OAuth device flow
+├── index.ts       # CLI entry point, command dispatch, error boundary
+├── cli.ts         # Argument parsing (Node parseArgs, strict mode)
+├── shared.ts      # Types, GraphQL query, stats aggregation, shared utilities
+├── login.ts       # OAuth device flow (browser auto-open)
 ├── fetch-emu.ts   # GitHub GraphQL integration
-├── upload.ts      # Chapa server upload
+├── upload.ts      # Chapa server upload (merge stats)
+├── insights.ts    # Claude Code HTML report parsing + upload
 ├── config.ts      # Credential storage (~/.chapa/credentials.json)
-└── auth.ts        # Token resolution
+├── auth.ts        # Token resolution
+├── telemetry.ts   # Fire-and-forget operation telemetry
+└── logger.ts      # Structured logging (verbose/JSON modes)
 ```
 
-Three API endpoints connect the CLI to the Chapa server: device flow auth, token exchange, and stats upload.
+Six API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, stats upload, insights upload, badge recalculate, and telemetry.
 
 ## Tech Stack
 
 - **Language**: TypeScript (ES2022, ESM)
 - **Build**: tsup (bundles to `dist/`, adds shebang)
 - **Test**: Vitest + v8 coverage
-- **CI**: GitHub Actions (Node 18/20/22 matrix)
+- **CI**: GitHub Actions (Node 20/22/24 matrix)
 - **Package manager**: pnpm
 
 ## Branching Strategy
@@ -56,7 +59,7 @@ docs: description
 1. Create a feature branch from `develop`
 2. Make changes, write/update tests
 3. Open a PR targeting `develop`
-4. CI must pass (test + typecheck + build across Node 18/20/22)
+4. CI must pass (test + typecheck + build across Node 20/22/24)
 5. Merge to `develop`; when ready to release, merge `develop` → `main`
 
 ## Testing & CI
@@ -81,7 +84,8 @@ Chain with `&&` or `;`: `pnpm run typecheck 2>&1; pnpm test 2>&1`
 
 1. Bump `version` in `package.json` on `develop`
 2. Merge `develop` → `main` via PR
-3. Publish manually: `npm publish --otp=<code>` (2FA required)
+3. Create a GitHub Release — the `publish.yml` workflow publishes to npm automatically
+4. If automated publish fails (strict 2FA), publish manually: `npm publish --otp=<code>`
 
 ## Code Style
 
@@ -89,7 +93,7 @@ Chain with `&&` or `;`: `pnpm run typecheck 2>&1; pnpm test 2>&1`
 - Prefer explicit types over `any`
 - Keep modules focused — one responsibility per file
 - Use Node.js built-in APIs where possible (no unnecessary dependencies)
-- Zero runtime dependencies
+- Zero npm runtime dependencies (linkedom is bundled into the build via tsup `noExternal`)
 
 ## Security Considerations
 

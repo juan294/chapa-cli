@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-23
+
+### Added
+
+- Automated npm publish workflow — `gh release create` triggers CI publish (no manual OTP)
+- Top-level error boundary with `CliError` sentinel pattern
+- Extracted command handlers: `handleLogin`, `handleLogout`, `handleInsights`, `handleMerge`
+- Shared utilities in `shared.ts`: `stripTrailingSlashes`, `getRootErrorMessage`, `getFullErrorChain`, `extractErrorDetail`
+- 27 new tests (226 → 253): error boundary, MAX_POLL timeout, response fallbacks, strict parsing
+
+### Changed
+
+- **Breaking:** Strict CLI argument parsing — unknown flags now error instead of being silently ignored
+- Bundle `linkedom` into dist output via tsup `noExternal` — zero npm runtime dependencies restored
+- Reduced `process.exit()` calls from 17 to 1 (error boundary only)
+- Deduplicated URL stripping and error chain walking across modules
+- Removed unused type exports (`UploadOptions`, `UploadResult`, `FetchEmuOptions`, `LoggerOptions`)
+- Login polling dots now print every 2s instead of every 10s
+- Anchored telemetry error classification regexes to prevent false matches
+- Eliminated TOCTOU `existsSync` checks in config.ts
+
+### Fixed
+
+- Login timer tests use fake timers with DI injection (fixes CI timeout on Node 20/22/24)
+
+### Documentation
+
+- Updated README: added `insights` command, `--file` flag, Node 20+ requirement
+- Updated CLAUDE.md: architecture tree (+3 files), CI matrix, endpoint count, release process
+- Updated SECURITY.md: supported versions (0.3.x), bundling policy
+- Updated CONTRIBUTING.md: insights command in testing examples
+
 ## [0.3.1] - 2026-03-23
 
 ### Added
@@ -75,7 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD pipeline with Node 18/20/22 matrix testing
 - Automated npm publishing on version bump
 
-[Unreleased]: https://github.com/juan294/chapa-cli/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/juan294/chapa-cli/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/juan294/chapa-cli/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/juan294/chapa-cli/compare/v0.2.8...v0.3.1
 [0.2.8]: https://github.com/juan294/chapa-cli/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/juan294/chapa-cli/releases/tag/v0.2.7

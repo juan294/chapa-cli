@@ -23,10 +23,10 @@ export interface TelemetryPayload {
 
 /** Classify an error message into a category for dashboarding. */
 export function classifyError(message: string): TelemetryPayload["errorCategory"] {
-  if (/40[13]/.test(message)) return "auth";
+  if (/\b40[13]\b/.test(message)) return "auth";
   if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|DNS/i.test(message)) return "network";
   if (/graphql/i.test(message)) return "graphql";
-  if (/5\d{2}/.test(message)) return "server";
+  if (/\b5\d{2}\b/.test(message)) return "server";
   return "unknown";
 }
 

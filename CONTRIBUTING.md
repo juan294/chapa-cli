@@ -65,6 +65,7 @@ Thanks for your interest in contributing! This project was extracted from the ma
 pnpm run build
 node dist/index.js login --server http://localhost:3001
 node dist/index.js merge --emu-handle your-emu --server http://localhost:3001
+node dist/index.js insights --file path/to/report.html --server http://localhost:3001
 ```
 
 ## Commit Format

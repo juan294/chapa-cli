@@ -19,7 +19,7 @@ If you use a GitHub EMU account at work, your contributions live on a separate i
 npm install -g chapa-cli
 ```
 
-Requires Node.js 18+.
+Requires Node.js 20+.
 
 ## Quick start
 
@@ -56,6 +56,16 @@ Clear stored credentials from `~/.chapa/credentials.json`.
 chapa logout
 ```
 
+### `chapa insights`
+
+Upload a Claude Code insights HTML report to your Chapa badge.
+
+```bash
+chapa insights --file ~/Downloads/claude-code-insights.html
+chapa insights --file report.html --json     # structured output
+chapa insights --file report.html --verbose  # debug output
+```
+
 ### `chapa merge`
 
 Fetch stats from your EMU account and upload them to Chapa.
@@ -80,6 +90,7 @@ See [EMU token setup](#emu-token-setup) for step-by-step instructions.
 | `--emu-token <token>` | EMU GitHub token (or set `GITHUB_EMU_TOKEN`) |
 | `--handle <handle>` | Override personal handle (auto-detected from login) |
 | `--token <token>` | Override auth token (auto-detected from login) |
+| `--file <path>` | Path to Claude Code insights HTML file (required for insights) |
 | `--server <url>` | Chapa server URL (default: production) |
 | `--verbose` | Show debug output, timings, and server responses |
 | `--json` | Output merge result as structured JSON (for scripting/CI) |
@@ -169,6 +180,8 @@ Run with `--verbose` for detailed debug output including timing, server response
 1. **Login**: The CLI generates a session ID, displays an authorization URL, and polls the Chapa server until you approve in the browser. Credentials are saved to `~/.chapa/credentials.json`.
 
 2. **Merge**: The CLI fetches your EMU account's contribution data via GitHub's GraphQL API (using your EMU token), then uploads the aggregated stats to the Chapa server. Your badge will reflect the combined data on next refresh.
+
+3. **Insights**: The CLI parses a Claude Code insights HTML report (exported from your browser), extracts session metrics, tool usage, and language data, then uploads it to the Chapa server to compute your Craft Score.
 
 ## Metrics collected
 

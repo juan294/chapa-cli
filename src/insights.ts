@@ -1,5 +1,6 @@
 import { parseHTML } from "linkedom";
 import type { InsightsUpload } from "./shared.js";
+import { stripTrailingSlashes } from "./shared.js";
 
 function findChartCard(doc: Document, titlePrefix: string): Element | null {
   const cards = doc.querySelectorAll(".chart-card");
@@ -272,7 +273,7 @@ export interface InsightsUploadResult {
 export async function uploadInsights(
   opts: InsightsUploadOptions,
 ): Promise<InsightsUploadResult> {
-  const baseUrl = opts.serverUrl.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(opts.serverUrl);
   const url = `${baseUrl}/api/insights`;
   const log = opts.logger;
 
@@ -316,7 +317,7 @@ export async function triggerRecalculate(
   token: string,
   logger?: Logger,
 ): Promise<void> {
-  const baseUrl = serverUrl.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(serverUrl);
   const url = `${baseUrl}/api/recalculate`;
 
   try {

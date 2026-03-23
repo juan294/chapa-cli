@@ -33,7 +33,7 @@ interface TelemetryPayload {
     uploadMs: number;         // Chapa server upload duration
     totalMs: number;          // Total merge operation duration
   };
-  cliVersion: string;         // e.g. "0.2.9"
+  cliVersion: string;         // e.g. "0.3.1"
 }
 ```
 

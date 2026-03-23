@@ -265,17 +265,15 @@ export function buildStatsFromRaw(raw: RawContributionData): StatsData {
   // 3. Total commits from contribution calendar
   const commitsTotal = raw.contributionCalendar.totalContributions;
 
-  // 4. PRs: only count merged, compute weight
   const mergedPRs = raw.pullRequests.nodes.filter((pr) => pr.merged);
   const prsMergedCount = mergedPRs.length;
-  const prsMergedWeight = Math.min(
-    mergedPRs.reduce((sum, pr) => sum + computePrWeight(pr), 0),
-    PR_WEIGHT_AGG_CAP,
-  );
-
-  // 5. Lines added/deleted from merged PRs
-  const linesAdded = mergedPRs.reduce((sum, pr) => sum + pr.additions, 0);
-  const linesDeleted = mergedPRs.reduce((sum, pr) => sum + pr.deletions, 0);
+  let prsMergedWeight = 0, linesAdded = 0, linesDeleted = 0;
+  for (const pr of mergedPRs) {
+    prsMergedWeight += computePrWeight(pr);
+    linesAdded += pr.additions;
+    linesDeleted += pr.deletions;
+  }
+  prsMergedWeight = Math.min(prsMergedWeight, PR_WEIGHT_AGG_CAP);
 
   // 6. Reviews and issues
   const reviewsSubmittedCount = raw.reviews.totalCount;
@@ -301,19 +299,12 @@ export function buildStatsFromRaw(raw: RawContributionData): StatsData {
   const maxDailyCount = Math.max(...heatmapData.map((d) => d.count), 0);
   const maxCommitsIn10Min = maxDailyCount >= 30 ? maxDailyCount : 0;
 
-  // 10. Total stars, forks, and watchers across owned repos
-  const totalStars = raw.ownedRepoStars.nodes.reduce(
-    (sum, r) => sum + r.stargazerCount,
-    0,
-  );
-  const totalForks = raw.ownedRepoStars.nodes.reduce(
-    (sum, r) => sum + r.forkCount,
-    0,
-  );
-  const totalWatchers = raw.ownedRepoStars.nodes.reduce(
-    (sum, r) => sum + r.watchers.totalCount,
-    0,
-  );
+  let totalStars = 0, totalForks = 0, totalWatchers = 0;
+  for (const r of raw.ownedRepoStars.nodes) {
+    totalStars += r.stargazerCount;
+    totalForks += r.forkCount;
+    totalWatchers += r.watchers.totalCount;
+  }
 
   return {
     handle: raw.login,

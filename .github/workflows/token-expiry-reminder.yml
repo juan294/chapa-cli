@@ -13,7 +13,7 @@ jobs:
       - name: Check if token expiry is approaching
         env:
           # Update this date when you rotate the token
-          TOKEN_EXPIRY: "2026-05-16"
+          TOKEN_EXPIRY: "2026-06-18"
           WARN_DAYS_BEFORE: 14
         run: |
           expiry=$(date -d "$TOKEN_EXPIRY" +%s)

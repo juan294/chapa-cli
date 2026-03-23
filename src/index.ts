@@ -42,6 +42,11 @@ Options:
   --help, -h              Show this help message
 `;
 
+/** Use explicit --server if set, otherwise fall back to saved config, otherwise default. */
+function resolveServerUrl(cliServer: string, configServer?: string): string {
+  return cliServer !== DEFAULT_SERVER ? cliServer : (configServer ?? cliServer);
+}
+
 /** Sentinel error for known CLI error exits (validation failures, expected errors). */
 class CliError extends Error {
   constructor(message: string) {
@@ -72,7 +77,7 @@ async function handleInsights(args: CliArgs): Promise<void> {
   const config = loadConfig();
   const handle = args.handle ?? config?.handle;
   const authToken = args.token ?? config?.token;
-  const serverUrl = args.server !== DEFAULT_SERVER ? args.server : (config?.server ?? args.server);
+  const serverUrl = resolveServerUrl(args.server, config?.server);
 
   if (!args.file) {
     log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
@@ -103,7 +108,6 @@ async function handleInsights(args: CliArgs): Promise<void> {
     throw new CliError("File read error");
   }
 
-  // Parse HTML
   log.info("Parsing insights report...");
   log.time("parse");
   let data: InsightsUpload;
@@ -124,7 +128,6 @@ async function handleInsights(args: CliArgs): Promise<void> {
   log.debug(`Parsed: ${data.totalSessions} sessions, ${data.volume.messages} messages, ${data.totalToolCalls} tool calls`);
   log.debug(`Period: ${data.reportPeriod.start} to ${data.reportPeriod.end}`);
 
-  // Upload
   log.info(`Uploading insights to ${serverUrl}...`);
   log.time("upload");
   const result = await uploadInsights({
@@ -230,7 +233,6 @@ async function handleMerge(args: CliArgs): Promise<void> {
     throw new CliError("Not authenticated");
   }
 
-  // Fetch EMU stats
   log.info(`Fetching stats for EMU account: ${emuHandle}...`);
   log.time("fetch");
   const emuStats = await fetchEmuStats(emuHandle, emuToken, { logger: log });
@@ -243,8 +245,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
 
   log.info(formatStatsSummary(emuStats));
 
-  // Upload to Chapa
-  const serverUrl = args.server !== DEFAULT_SERVER ? args.server : (config?.server ?? args.server);
+  const serverUrl = resolveServerUrl(args.server, config?.server);
   log.info(`Uploading supplemental stats to ${serverUrl}...`);
   log.time("upload");
   const result = await uploadSupplementalStats({
