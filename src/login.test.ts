@@ -33,7 +33,10 @@ describe("login", () => {
     vi.useRealTimers();
   });
 
-  function advancePoll() {
+  async function advancePoll() {
+    // Flush microtasks first — on Node 18, await in login() (e.g., await _waitForEnter())
+    // may not resolve before advanceTimersByTimeAsync processes fake timers.
+    await Promise.resolve();
     return vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
   }
 
