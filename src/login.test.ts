@@ -524,31 +524,26 @@ describe("login", () => {
     mockExit.mockRestore();
   });
 
-  it("times out after MAX_POLL_ATTEMPTS with persistent pending status", { timeout: 30000 }, async () => {
-    vi.useRealTimers(); // Switch to real timers — fake timers struggle with 150 iterations
-
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("process.exit");
-    }) as never);
+  it("times out after MAX_POLL_ATTEMPTS with persistent pending status", async () => {
+    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
     const errorSpy = vi.spyOn(console, "error");
 
-    // Override the sleep by mocking setTimeout to resolve immediately
-    // so we don't actually wait 300 seconds
-    const origSetTimeout = globalThis.setTimeout;
-    vi.stubGlobal("setTimeout", ((fn: () => void) => origSetTimeout(fn, 0)) as typeof setTimeout);
-
     // Always return pending
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+    vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ status: "pending" }), { status: 200 }),
-    ));
+    );
 
-    await expect(login("https://example.com")).rejects.toThrow("process.exit");
+    const noopWait = () => Promise.resolve();
+    const noopOpen = () => {};
+    const p = login("https://example.com", { _waitForEnter: noopWait, _openBrowser: noopOpen });
+    // Advance fake timers through all 150 poll iterations
+    for (let i = 0; i < 150; i++) await advancePoll();
+    await p;
+
     expect(mockExit).toHaveBeenCalledWith(1);
-
     const allErrors = errorSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allErrors).toContain("Timed out");
 
-    vi.stubGlobal("setTimeout", origSetTimeout);
     mockExit.mockRestore();
     errorSpy.mockRestore();
   });
@@ -567,7 +562,9 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const noopWait = () => Promise.resolve();
+    const noopOpen = () => {};
+    const p = login("https://example.com", { _waitForEnter: noopWait, _openBrowser: noopOpen });
     for (let i = 0; i < 4; i++) await advancePoll();
     await p;
 
