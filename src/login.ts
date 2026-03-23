@@ -8,7 +8,10 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { saveConfig } from "./config.js";
+import { stripTrailingSlashes, getRootErrorMessage, getFullErrorChain } from "./shared.js";
 
 export const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 150; // 5 minutes at 2s intervals
@@ -26,6 +29,34 @@ interface PollResponse {
 interface LoginOptions {
   verbose?: boolean;
   insecure?: boolean;
+  /** @internal — test injection points */
+  _openBrowser?: (url: string) => void;
+  _waitForEnter?: () => Promise<void>;
+}
+
+export function openBrowser(url: string): void {
+  const cmd = process.platform === "darwin"
+    ? "open"
+    : process.platform === "win32"
+      ? "start"
+      : "xdg-open";
+
+  // Windows 'start' treats the first quoted arg as a window title
+  const args = process.platform === "win32" ? ["", url] : [url];
+
+  const child = spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  child.unref();
+}
+
+export function waitForEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.on("close", () => resolve());
+    rl.question("", () => {
+      rl.close();
+      resolve(); // Also resolve directly — Promise.resolve is idempotent
+    });
+  });
 }
 
 const TLS_ERROR_PATTERNS = [
@@ -46,55 +77,33 @@ function isTlsError(message: string): boolean {
   return TLS_ERROR_PATTERNS.some((p) => message.includes(p));
 }
 
-/**
- * Walk the error `.cause` chain and return the deepest message.
- * Node.js `fetch()` wraps real errors: Error("fetch failed", { cause: Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE") })
- */
-function getRootErrorMessage(err: unknown): string {
-  let current = err;
-  let message = "";
-  while (current instanceof Error) {
-    message = current.message;
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return message;
-}
-
-/**
- * Collect all messages and error codes from the cause chain (for TLS pattern matching).
- * Includes both .message and .code from each error in the chain.
- */
-function getFullErrorChain(err: unknown): string {
-  const parts: string[] = [];
-  let current = err;
-  while (current instanceof Error) {
-    parts.push(current.message);
-    const code = (current as Error & { code?: string }).code;
-    if (code) parts.push(code);
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return parts.join(" | ");
-}
-
 export async function login(serverUrl: string, opts: LoginOptions = {}): Promise<void> {
-  const { verbose = false, insecure = false } = opts;
+  const { verbose = false, insecure = false, _openBrowser = openBrowser, _waitForEnter = waitForEnter } = opts;
 
-  const baseUrl = serverUrl.replace(/\/+$/, "");
+  const baseUrl = stripTrailingSlashes(serverUrl);
   const sessionId = randomUUID();
   const authorizeUrl = `${baseUrl}/cli/authorize?session=${sessionId}`;
 
-  console.log("\nOpen this URL in a browser where your personal GitHub account is logged in:");
   console.log(`\n  ${authorizeUrl}\n`);
   console.log("Tip: If your default browser has your work (EMU) account,");
   console.log("     use a different browser or an incognito/private window.\n");
-  console.log("Waiting for approval...");
+
+  if (process.stdin.isTTY) {
+    console.log("Press ENTER to open in the browser...");
+    await _waitForEnter();
+    _openBrowser(authorizeUrl);
+    console.log("Opened browser. Waiting for approval...");
+  } else {
+    console.log("Open the URL above in your browser.");
+    console.log("Waiting for approval...");
+  }
 
   let serverErrorLogged = false;
   for (let i = 0; i < MAX_POLL_ATTEMPTS; i++) {
     await sleep(POLL_INTERVAL_MS);
 
-    // Progress feedback every 5 polls
-    if (i > 0 && i % 5 === 0) {
+    // Progress feedback every poll
+    if (i > 0) {
       process.stdout.write(".");
     }
 

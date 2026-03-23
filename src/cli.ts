@@ -1,13 +1,14 @@
 import { parseArgs as nodeParseArgs } from "node:util";
 
-const DEFAULT_SERVER = "https://chapa.thecreativetoken.com";
+export const DEFAULT_SERVER = "https://chapa.thecreativetoken.com";
 
 export interface CliArgs {
-  command: "merge" | "login" | "logout" | null;
+  command: "merge" | "login" | "logout" | "insights" | null;
   handle?: string;
   emuHandle?: string;
   emuToken?: string;
   token?: string;
+  file?: string;
   server: string;
   verbose: boolean;
   json: boolean;
@@ -16,17 +17,19 @@ export interface CliArgs {
   help: boolean;
 }
 
-const VALID_COMMANDS = ["merge", "login", "logout"] as const;
+const VALID_COMMANDS = ["merge", "login", "logout", "insights"] as const;
 
 export function parseArgs(argv: string[]): CliArgs {
-  // Extract positional command before flags
-  const positional = argv.find((a) => !a.startsWith("--") && !a.startsWith("-"));
-  const command = VALID_COMMANDS.includes(positional as (typeof VALID_COMMANDS)[number])
-    ? (positional as CliArgs["command"])
+  // Extract leading command (must be first argument, before any flags)
+  const first = argv[0];
+  const hasPositionalFirst = first != null && !first.startsWith("-");
+  const command = hasPositionalFirst &&
+    VALID_COMMANDS.includes(first as (typeof VALID_COMMANDS)[number])
+    ? (first as CliArgs["command"])
     : null;
 
-  // Remove positional from argv for nodeParseArgs
-  const flagArgs = argv.filter((a) => a !== positional || a.startsWith("--"));
+  // Strip the positional command slot so nodeParseArgs only sees flags
+  const flagArgs = hasPositionalFirst ? argv.slice(1) : argv;
 
   const { values } = nodeParseArgs({
     args: flagArgs,
@@ -35,6 +38,7 @@ export function parseArgs(argv: string[]): CliArgs {
       "emu-handle": { type: "string" },
       "emu-token": { type: "string" },
       token: { type: "string" },
+      file: { type: "string" },
       server: { type: "string", default: DEFAULT_SERVER },
       verbose: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
@@ -42,7 +46,7 @@ export function parseArgs(argv: string[]): CliArgs {
       version: { type: "boolean", short: "v", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
-    strict: false,
+    strict: true,
   });
 
   return {
@@ -51,6 +55,7 @@ export function parseArgs(argv: string[]): CliArgs {
     emuHandle: values["emu-handle"] as string | undefined,
     emuToken: values["emu-token"] as string | undefined,
     token: values.token as string | undefined,
+    file: values.file as string | undefined,
     server: (values.server as string) ?? DEFAULT_SERVER,
     verbose: (values.verbose as boolean) ?? false,
     json: (values.json as boolean) ?? false,

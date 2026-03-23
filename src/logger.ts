@@ -1,4 +1,4 @@
-export interface LoggerOptions {
+interface LoggerOptions {
   verbose: boolean;
   json: boolean;
 }

@@ -4,11 +4,12 @@ import pkg from "./package.json" with { type: "json" };
 export default defineConfig({
   entry: ["src/index.ts"],
   format: "esm",
-  target: "node18",
+  target: "node20",
   platform: "node",
   outDir: "dist",
   clean: true,
   banner: { js: "#!/usr/bin/env node" },
+  noExternal: ["linkedom"],
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
   },

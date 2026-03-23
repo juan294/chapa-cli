@@ -19,7 +19,7 @@ If you use a GitHub EMU account at work, your contributions live on a separate i
 npm install -g chapa-cli
 ```
 
-Requires Node.js 18+.
+Requires Node.js 20+.
 
 ## Quick start
 
@@ -27,7 +27,11 @@ Requires Node.js 18+.
 # 1. Log in with your personal GitHub (opens browser)
 chapa login
 
-# 2. Merge your EMU contributions
+# 2. Create an EMU token with scopes: repo, read:user, read:org, read:discussion
+#    Settings > Developer settings > Personal access tokens (on your EMU account)
+#    If your org uses SAML SSO, also authorize the token for your org (see below)
+
+# 3. Merge your EMU contributions
 chapa merge --emu-handle your-emu-handle --emu-token ghp_your_emu_token
 ```
 
@@ -52,6 +56,16 @@ Clear stored credentials from `~/.chapa/credentials.json`.
 chapa logout
 ```
 
+### `chapa insights`
+
+Upload a Claude Code insights HTML report to your Chapa badge.
+
+```bash
+chapa insights --file ~/Downloads/claude-code-insights.html
+chapa insights --file report.html --json     # structured output
+chapa insights --file report.html --verbose  # debug output
+```
+
 ### `chapa merge`
 
 Fetch stats from your EMU account and upload them to Chapa.
@@ -60,7 +74,13 @@ Fetch stats from your EMU account and upload them to Chapa.
 chapa merge --emu-handle your-emu-handle
 ```
 
-The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` environment variable. The token needs `read:user` scope.
+The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` environment variable.
+
+**Required token scopes:** `repo`, `read:user`, `read:org`, `read:discussion`
+
+> Without `repo` scope, only the contribution calendar works — PRs, lines, repos contributed, and stars will all show as zero.
+
+See [EMU token setup](#emu-token-setup) for step-by-step instructions.
 
 ## Options
 
@@ -70,8 +90,10 @@ The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` envir
 | `--emu-token <token>` | EMU GitHub token (or set `GITHUB_EMU_TOKEN`) |
 | `--handle <handle>` | Override personal handle (auto-detected from login) |
 | `--token <token>` | Override auth token (auto-detected from login) |
+| `--file <path>` | Path to Claude Code insights HTML file (required for insights) |
 | `--server <url>` | Chapa server URL (default: production) |
-| `--verbose` | Show detailed polling logs during login |
+| `--verbose` | Show debug output, timings, and server responses |
+| `--json` | Output merge result as structured JSON (for scripting/CI) |
 | `--insecure` | Skip TLS certificate verification |
 | `--version`, `-v` | Show version number |
 | `--help`, `-h` | Show help message |
@@ -93,11 +115,73 @@ chapa merge --emu-handle your-emu --insecure
 
 This disables TLS certificate verification for the CLI session only.
 
+## EMU token setup
+
+Your EMU token is a GitHub personal access token created on your **EMU (work) account** — not your personal account.
+
+### Step 1: Create the token
+
+1. Log into GitHub with your **EMU account**
+2. Go to **Settings** → **Developer settings** → **Personal access tokens** → **Tokens (classic)**
+3. Click **Generate new token (classic)**
+4. Give it a descriptive name (e.g. `chapa-cli`)
+5. Select these scopes:
+
+| Scope | Why |
+|-------|-----|
+| `repo` | Access repository data, PR details, lines changed, commit history |
+| `read:user` | Contribution calendar, profile info |
+| `read:org` | Repos in your enterprise org |
+| `read:discussion` | Discussion contributions (future-proofing) |
+
+6. Click **Generate token** and copy it
+
+### Step 2: Authorize for SAML SSO (if applicable)
+
+Most enterprise GitHub organizations enforce SAML single sign-on. If yours does, the token must be explicitly authorized for the org — otherwise PR details and repo data will be blocked.
+
+1. Go to **Settings** → **Developer settings** → **Personal access tokens**
+2. Find the token you just created
+3. Click **Configure SSO**
+4. Click **Authorize** next to your enterprise organization
+
+> **How to tell if SAML is blocking you:** Run `chapa merge --verbose`. If you see `saml_failure` in the error output, your token needs SSO authorization. Commits and active days will work, but PRs, lines, and reviews will show as zero.
+
+### Step 3: Store the token
+
+Either pass it directly:
+
+```bash
+chapa merge --emu-handle your-emu-handle --emu-token ghp_your_token
+```
+
+Or set it as an environment variable (recommended):
+
+```bash
+export GITHUB_EMU_TOKEN=ghp_your_token
+chapa merge --emu-handle your-emu-handle
+```
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| All metrics zero except commits | Token missing `repo` scope | Regenerate token with `repo` scope |
+| PRs/lines/reviews zero, commits work | SAML SSO not authorized | Authorize token for your org (see above) |
+| `fetch failed → ENOTFOUND` | DNS/network issue | Check internet connection or proxy settings |
+| `fetch failed → ECONNREFUSED` | GitHub API unreachable | Corporate firewall may be blocking `api.github.com` |
+| TLS certificate errors | Corporate TLS interception | Use `--insecure` flag |
+| `GraphQL HTTP 401` | Token expired or invalid | Regenerate the EMU token |
+
+Run with `--verbose` for detailed debug output including timing, server responses, and error details.
+
 ## How it works
 
 1. **Login**: The CLI generates a session ID, displays an authorization URL, and polls the Chapa server until you approve in the browser. Credentials are saved to `~/.chapa/credentials.json`.
 
 2. **Merge**: The CLI fetches your EMU account's contribution data via GitHub's GraphQL API (using your EMU token), then uploads the aggregated stats to the Chapa server. Your badge will reflect the combined data on next refresh.
+
+3. **Insights**: The CLI parses a Claude Code insights HTML report (exported from your browser), extracts session metrics, tool usage, and language data, then uploads it to the Chapa server to compute your Craft Score.
 
 ## Metrics collected
 

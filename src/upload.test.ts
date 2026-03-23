@@ -121,6 +121,47 @@ describe("uploadSupplementalStats", () => {
     expect(result.error).toContain("Connection refused");
   });
 
+  it("falls back when res.json() rejects on error response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => { throw new Error("invalid json"); },
+    });
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("500");
+    // Fallback should produce "Unknown error" since json() failed
+    expect(result.error).toContain("Unknown error");
+  });
+
+  it("falls back when res.json() rejects on success response", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => { throw new Error("invalid json"); },
+    });
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    // Should still succeed — the fallback {} is used for serverResponse
+    expect(result.success).toBe(true);
+    expect(result.serverResponse).toEqual({});
+  });
+
   it("strips trailing slash from server URL", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

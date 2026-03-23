@@ -1,5 +1,5 @@
 import type { StatsData, RawContributionData } from "./shared.js";
-import { CONTRIBUTION_QUERY, buildStatsFromRaw, SCORING_WINDOW_DAYS } from "./shared.js";
+import { CONTRIBUTION_QUERY, buildStatsFromRaw, SCORING_WINDOW_DAYS, extractErrorDetail } from "./shared.js";
 import type { Logger } from "./logger.js";
 
 // ---------------------------------------------------------------------------
@@ -73,24 +73,11 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "..." : s;
 }
 
-/** Extract a useful error message, walking error.cause chain for root cause. */
-function extractErrorDetail(err: Error): string {
-  const parts = [err.message];
-  let current: unknown = err.cause;
-  while (current instanceof Error) {
-    if (current.message && current.message !== err.message) {
-      parts.push(current.message);
-    }
-    current = current.cause;
-  }
-  return parts.join(" → ");
-}
-
 // ---------------------------------------------------------------------------
 // Fetch EMU stats via GraphQL (requires EMU token with auth)
 // ---------------------------------------------------------------------------
 
-export interface FetchEmuOptions {
+interface FetchEmuOptions {
   logger?: Logger;
 }
 

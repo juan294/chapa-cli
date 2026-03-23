@@ -168,6 +168,62 @@ query($login: String!, $since: DateTime!, $until: DateTime!, $historySince: GitT
 `;
 
 // ---------------------------------------------------------------------------
+// URL helpers
+// ---------------------------------------------------------------------------
+
+/** Remove trailing slashes from a URL string. */
+export function stripTrailingSlashes(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+// ---------------------------------------------------------------------------
+// Error chain utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Walk the error `.cause` chain and return the deepest message.
+ * Node.js `fetch()` wraps real errors: Error("fetch failed", { cause: Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE") })
+ */
+export function getRootErrorMessage(err: unknown): string {
+  let current = err;
+  let message = "";
+  while (current instanceof Error) {
+    message = current.message;
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return message;
+}
+
+/**
+ * Collect all messages and error codes from the cause chain (for TLS pattern matching).
+ * Includes both .message and .code from each error in the chain.
+ */
+export function getFullErrorChain(err: unknown): string {
+  const parts: string[] = [];
+  let current = err;
+  while (current instanceof Error) {
+    parts.push(current.message);
+    const code = (current as Error & { code?: string }).code;
+    if (code) parts.push(code);
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return parts.join(" | ");
+}
+
+/** Extract a useful error message, walking error.cause chain for root cause. */
+export function extractErrorDetail(err: Error): string {
+  const parts = [err.message];
+  let current: unknown = err.cause;
+  while (current instanceof Error) {
+    if (current.message && current.message !== err.message) {
+      parts.push(current.message);
+    }
+    current = current.cause;
+  }
+  return parts.join(" → ");
+}
+
+// ---------------------------------------------------------------------------
 // Scoring helpers
 // ---------------------------------------------------------------------------
 
@@ -209,17 +265,15 @@ export function buildStatsFromRaw(raw: RawContributionData): StatsData {
   // 3. Total commits from contribution calendar
   const commitsTotal = raw.contributionCalendar.totalContributions;
 
-  // 4. PRs: only count merged, compute weight
   const mergedPRs = raw.pullRequests.nodes.filter((pr) => pr.merged);
   const prsMergedCount = mergedPRs.length;
-  const prsMergedWeight = Math.min(
-    mergedPRs.reduce((sum, pr) => sum + computePrWeight(pr), 0),
-    PR_WEIGHT_AGG_CAP,
-  );
-
-  // 5. Lines added/deleted from merged PRs
-  const linesAdded = mergedPRs.reduce((sum, pr) => sum + pr.additions, 0);
-  const linesDeleted = mergedPRs.reduce((sum, pr) => sum + pr.deletions, 0);
+  let prsMergedWeight = 0, linesAdded = 0, linesDeleted = 0;
+  for (const pr of mergedPRs) {
+    prsMergedWeight += computePrWeight(pr);
+    linesAdded += pr.additions;
+    linesDeleted += pr.deletions;
+  }
+  prsMergedWeight = Math.min(prsMergedWeight, PR_WEIGHT_AGG_CAP);
 
   // 6. Reviews and issues
   const reviewsSubmittedCount = raw.reviews.totalCount;
@@ -245,19 +299,12 @@ export function buildStatsFromRaw(raw: RawContributionData): StatsData {
   const maxDailyCount = Math.max(...heatmapData.map((d) => d.count), 0);
   const maxCommitsIn10Min = maxDailyCount >= 30 ? maxDailyCount : 0;
 
-  // 10. Total stars, forks, and watchers across owned repos
-  const totalStars = raw.ownedRepoStars.nodes.reduce(
-    (sum, r) => sum + r.stargazerCount,
-    0,
-  );
-  const totalForks = raw.ownedRepoStars.nodes.reduce(
-    (sum, r) => sum + r.forkCount,
-    0,
-  );
-  const totalWatchers = raw.ownedRepoStars.nodes.reduce(
-    (sum, r) => sum + r.watchers.totalCount,
-    0,
-  );
+  let totalStars = 0, totalForks = 0, totalWatchers = 0;
+  for (const r of raw.ownedRepoStars.nodes) {
+    totalStars += r.stargazerCount;
+    totalForks += r.forkCount;
+    totalWatchers += r.watchers.totalCount;
+  }
 
   return {
     handle: raw.login,
@@ -308,4 +355,51 @@ export function formatStatsSummary(stats: StatsData): string {
     `  Stars / Forks:      ${fmtNum(stats.totalStars)} / ${fmtNum(stats.totalForks)}`,
   ];
   return lines.join("\n");
+}
+
+// ── Insights types ──────────────────────────────────────────────────────
+
+export interface InsightsUpload {
+  tool: "claude-code";
+  reportPeriod: {
+    start: string; // ISO date (YYYY-MM-DD)
+    end: string; // ISO date (YYYY-MM-DD)
+  };
+  volume: {
+    messages: number;
+    linesAdded: number;
+    linesDeleted: number;
+    files: number;
+    days: number;
+    msgsPerDay: number;
+  };
+  toolUsage: Record<string, number>;
+  sessionTypes: Record<string, number>;
+  outcomes: {
+    fullyAchieved: number;
+    mostlyAchieved: number;
+    partiallyAchieved: number;
+  };
+  friction: {
+    buggyCode: number;
+    wrongApproach: number;
+    misunderstoodRequest: number;
+  };
+  satisfaction: {
+    dissatisfied: number;
+    likelySatisfied: number;
+    satisfied: number;
+  };
+  multiClauding: {
+    overlapEvents: number;
+    sessionsInvolved: number;
+    messagePercent: number; // 0-100
+  };
+  responseTime: {
+    medianSeconds: number;
+    averageSeconds: number;
+  };
+  toolErrors: Record<string, number>;
+  totalSessions: number;
+  totalToolCalls: number;
 }

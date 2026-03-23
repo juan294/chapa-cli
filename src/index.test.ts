@@ -12,11 +12,21 @@ const mockCreateLogger = vi.hoisted(() => vi.fn());
 const mockFormatStatsSummary = vi.hoisted(() => vi.fn());
 const mockSendTelemetry = vi.hoisted(() => vi.fn());
 const mockClassifyError = vi.hoisted(() => vi.fn());
+const mockParseInsightsHtml = vi.hoisted(() => vi.fn());
+const mockUploadInsights = vi.hoisted(() => vi.fn());
+const mockTriggerRecalculate = vi.hoisted(() => vi.fn());
+const mockReadFileSync = vi.hoisted(() => vi.fn());
+const mockResolve = vi.hoisted(() => vi.fn());
 
-vi.mock("./cli.js", () => ({ parseArgs: mockParseArgs }));
+vi.mock("./cli.js", () => ({ parseArgs: mockParseArgs, DEFAULT_SERVER: "https://chapa.thecreativetoken.com" }));
 vi.mock("./auth.js", () => ({ resolveToken: mockResolveToken }));
 vi.mock("./fetch-emu.js", () => ({ fetchEmuStats: mockFetchEmuStats }));
 vi.mock("./upload.js", () => ({ uploadSupplementalStats: mockUploadSupplementalStats }));
+vi.mock("./insights.js", () => ({
+  parseInsightsHtml: mockParseInsightsHtml,
+  uploadInsights: mockUploadInsights,
+  triggerRecalculate: mockTriggerRecalculate,
+}));
 vi.mock("./config.js", () => ({
   loadConfig: mockLoadConfig,
   deleteConfig: mockDeleteConfig,
@@ -28,6 +38,14 @@ vi.mock("./telemetry.js", () => ({
   sendTelemetry: mockSendTelemetry,
   classifyError: mockClassifyError,
 }));
+vi.mock("node:fs", async () => {
+  const actual = await import("node:fs");
+  return { ...actual, readFileSync: mockReadFileSync };
+});
+vi.mock("node:path", async () => {
+  const actual = await import("node:path");
+  return { ...actual, resolve: mockResolve };
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -49,6 +67,7 @@ function defaultArgs(overrides: Record<string, unknown> = {}) {
     emuHandle: undefined,
     emuToken: undefined,
     token: undefined,
+    file: undefined,
     server: "https://chapa.thecreativetoken.com",
     verbose: false,
     json: false,
@@ -140,6 +159,25 @@ describe("index.ts command dispatch", () => {
     mockFormatStatsSummary.mockReturnValue("  Commits:  42\n  PRs merged:  5");
     mockSendTelemetry.mockResolvedValue(undefined);
     mockClassifyError.mockReturnValue("unknown");
+    mockParseInsightsHtml.mockReturnValue({
+      tool: "claude-code",
+      totalSessions: 66,
+      totalToolCalls: 2521,
+      volume: { messages: 549, linesAdded: 16843, linesDeleted: 1230, files: 290, days: 9, msgsPerDay: 61 },
+      reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      toolUsage: {},
+      sessionTypes: {},
+      outcomes: { fullyAchieved: 24, mostlyAchieved: 6, partiallyAchieved: 2 },
+      friction: { buggyCode: 15, wrongApproach: 12, misunderstoodRequest: 4 },
+      satisfaction: { dissatisfied: 5, likelySatisfied: 50, satisfied: 19 },
+      multiClauding: { overlapEvents: 52, sessionsInvolved: 45, messagePercent: 31 },
+      responseTime: { medianSeconds: 80.6, averageSeconds: 188.4 },
+      toolErrors: {},
+    });
+    mockUploadInsights.mockResolvedValue({ success: false, error: "mock" });
+    mockTriggerRecalculate.mockResolvedValue(undefined);
+    mockReadFileSync.mockReturnValue("<html></html>");
+    mockResolve.mockImplementation((p: string) => `/resolved/${p}`);
   });
 
   afterEach(() => {
@@ -152,25 +190,24 @@ describe("index.ts command dispatch", () => {
 
   // ── --version ────────────────────────────────────────────────────────
 
-  it("outputs version and exits with code 0 for --version", async () => {
+  it("outputs version and returns cleanly for --version", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({ version: true }));
 
     await runMain();
 
-    expect(mockExit).toHaveBeenCalledWith(0);
     const output = spyOutput(logSpy);
     // In dev/test mode, __CLI_VERSION__ is undefined so VERSION = "0.0.0-dev"
     expect(output).toContain("0.0.0-dev");
+    expect(mockExit).not.toHaveBeenCalled();
   });
 
   // ── --help ───────────────────────────────────────────────────────────
 
-  it("outputs help text and exits with code 0 for --help", async () => {
+  it("outputs help text and returns cleanly for --help", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({ help: true }));
 
     await runMain();
 
-    expect(mockExit).toHaveBeenCalledWith(0);
     const output = spyOutput(logSpy);
     expect(output).toContain("chapa-cli");
     expect(output).toContain("Commands:");
@@ -179,6 +216,17 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("chapa merge");
     expect(output).toContain("--emu-handle");
     expect(output).toContain("--help");
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("help text includes insights command and --file flag", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ help: true }));
+
+    await runMain();
+
+    const output = spyOutput(logSpy);
+    expect(output).toContain("chapa insights");
+    expect(output).toContain("--file");
   });
 
   it("help text includes --json and --verbose flags", async () => {
@@ -296,7 +344,7 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = spyOutput(errorSpy);
     expect(output).toContain("Usage:");
-    expect(output).toContain("login | logout | merge");
+    expect(output).toContain("login | logout | merge | insights");
     expect(output).toContain("--help");
   });
 
@@ -676,6 +724,245 @@ describe("index.ts command dispatch", () => {
 
   // ── merge: explicit server overrides config server ───────────────────
 
+  // ── insights: missing --file ───────────────────────────────────────
+
+  it("exits 1 when insights is called without --file", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights" }));
+    mockLoadConfig.mockReturnValue({ token: "tok", handle: "user", server: "https://s.com" });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("--file is required");
+  });
+
+  // ── insights: missing personal handle ─────────────────────────────
+
+  it("exits 1 when insights has no personal handle", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights", file: "report.html" }));
+    mockLoadConfig.mockReturnValue(null);
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("No personal handle found");
+    expect(output).toContain("chapa login");
+  });
+
+  // ── insights: missing auth token ──────────────────────────────────
+
+  it("exits 1 when insights has no auth token", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "juan294" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("Not authenticated");
+    expect(output).toContain("chapa login");
+  });
+
+  // ── insights: creates logger with correct flags ────────────────────
+
+  it("creates logger with verbose and json flags for insights command", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", verbose: true }),
+    );
+    mockLoadConfig.mockReturnValue({ token: "tok", handle: "user", server: "https://s.com" });
+
+    await runMain();
+
+    expect(mockCreateLogger).toHaveBeenCalledWith({ verbose: true, json: false });
+  });
+
+  // ── insights: file not found ──────────────────────────────────────────
+
+  it("exits 1 when insights file does not exist", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "nonexistent.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+    err.code = "ENOENT";
+    mockReadFileSync.mockImplementation(() => { throw err; });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("File not found");
+  });
+
+  // ── insights: invalid HTML (no sessions) ───────────────────────────────
+
+  it("exits 1 when parsed HTML has no sessions", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "bad.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockParseInsightsHtml.mockReturnValue({
+      tool: "claude-code",
+      totalSessions: 0,
+      volume: { messages: 0, days: 0 },
+      reportPeriod: { start: "", end: "" },
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("Could not extract session data");
+  });
+
+  // ── insights: upload failure ──────────────────────────────────────────
+
+  it("exits 1 when upload returns failure", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: false,
+      error: "Server returned 401: Invalid token",
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("Server returned 401");
+  });
+
+  // ── insights: happy path ──────────────────────────────────────────────
+
+  it("completes successfully and displays craft score", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: true,
+      craftScore: {
+        craftScore: 72,
+        tier: "Expert",
+        dimensions: { proficiency: 80, effectiveness: 70, sophistication: 66 },
+        reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      },
+    });
+
+    await runMain();
+
+    expect(mockExit).not.toHaveBeenCalled();
+    const output = loggerOutput(mockLogger.info);
+    expect(output).toContain("Craft Score: 72/100 (Expert)");
+    expect(output).toContain("Proficiency");
+    expect(output).toContain("Effectiveness");
+    expect(output).toContain("Sophistication");
+    expect(output).toContain("Success!");
+  });
+
+  it("triggers recalculate on successful upload", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: true,
+      craftScore: {
+        craftScore: 55,
+        tier: "Expert",
+        dimensions: { proficiency: 60, effectiveness: 55, sophistication: 50 },
+        reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      },
+    });
+
+    await runMain();
+
+    expect(mockTriggerRecalculate).toHaveBeenCalled();
+  });
+
+  it("sends telemetry on successful insights upload", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: true,
+      craftScore: {
+        craftScore: 55,
+        tier: "Expert",
+        dimensions: { proficiency: 60, effectiveness: 55, sophistication: 50 },
+        reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      },
+    });
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        success: true,
+        targetHandle: "user",
+        sourceHandle: "user",
+      }),
+    );
+  });
+
+  // ── insights: --json output ───────────────────────────────────────────
+
+  it("outputs JSON on successful insights upload with --json", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok", json: true }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: true,
+      craftScore: {
+        craftScore: 72,
+        tier: "Expert",
+        dimensions: { proficiency: 80, effectiveness: 70, sophistication: 66 },
+        reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      },
+    });
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const jsonOutput = JSON.parse(written);
+    expect(jsonOutput.success).toBe(true);
+    expect(jsonOutput.handle).toBe("user");
+    expect(jsonOutput.craftScore.tier).toBe("Expert");
+    expect(jsonOutput.timing).toBeDefined();
+    expect(jsonOutput.cliVersion).toBeDefined();
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("outputs JSON on failed insights upload with --json", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok", json: true }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: false,
+      error: "Server returned 429: Too many uploads",
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const jsonOutput = JSON.parse(written);
+    expect(jsonOutput.success).toBe(false);
+    expect(jsonOutput.error).toContain("429");
+  });
+
+  // ── merge: explicit server overrides config server ───────────────────
+
   it("uses explicit --server flag over config server when non-default", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
@@ -707,5 +994,62 @@ describe("index.ts command dispatch", () => {
       }),
     );
     expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  // ── Error boundary (W12) ──────────────────────────────────────────────
+
+  it("catches unexpected errors in main() and exits 1 via error boundary", async () => {
+    mockParseArgs.mockImplementation(() => {
+      throw new Error("Unexpected kaboom");
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Unexpected kaboom");
+  });
+
+  it("error boundary handles non-Error thrown values", async () => {
+    mockParseArgs.mockImplementation(() => {
+      throw "string error value";
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("string error value");
+  });
+
+  it("exits 1 when login() throws an unexpected error", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+    mockLogin.mockRejectedValue(new Error("Network timeout"));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Network timeout");
+  });
+
+  it("exits 1 when fetchEmuStats throws an unexpected error", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockRejectedValue(new Error("GraphQL schema mismatch"));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("GraphQL schema mismatch");
   });
 });

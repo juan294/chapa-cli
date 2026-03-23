@@ -4,7 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.2.x   | Yes       |
+| 0.3.x   | Yes       |
+| 0.2.x   | No        |
 | < 0.2   | No        |
 
 ## Reporting a Vulnerability
@@ -39,7 +40,7 @@ Please include:
 ## Security Considerations for Contributors
 
 - Never commit tokens, credentials, or secrets
-- Do not add dependencies without careful review — this project maintains zero runtime dependencies
+- Do not add dependencies without careful review — this project bundles all dependencies into the build (zero npm runtime deps)
 - Be cautious with user input handling in CLI argument parsing
 - Ensure any network requests respect the TLS configuration flags
 

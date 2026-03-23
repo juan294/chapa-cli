@@ -48,7 +48,7 @@ body:
     attributes:
       label: CLI Version
       description: "Output of `chapa --version`"
-      placeholder: "0.2.7"
+      placeholder: "0.3.1"
     validations:
       required: true
 
