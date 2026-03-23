@@ -28,6 +28,9 @@ interface PollResponse {
 interface LoginOptions {
   verbose?: boolean;
   insecure?: boolean;
+  /** @internal — test injection points */
+  _openBrowser?: (url: string) => void;
+  _waitForEnter?: () => Promise<void>;
 }
 
 export function openBrowser(url: string): void {
@@ -104,7 +107,7 @@ function getFullErrorChain(err: unknown): string {
 }
 
 export async function login(serverUrl: string, opts: LoginOptions = {}): Promise<void> {
-  const { verbose = false, insecure = false } = opts;
+  const { verbose = false, insecure = false, _openBrowser = openBrowser, _waitForEnter = waitForEnter } = opts;
 
   const baseUrl = serverUrl.replace(/\/+$/, "");
   const sessionId = randomUUID();
@@ -116,8 +119,8 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
 
   if (process.stdin.isTTY) {
     console.log("Press ENTER to open in the browser...");
-    await waitForEnter();
-    openBrowser(authorizeUrl);
+    await _waitForEnter();
+    _openBrowser(authorizeUrl);
     console.log("Opened browser. Waiting for approval...");
   } else {
     console.log("Open the URL above in your browser.");

@@ -2,46 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock dependencies
 const mockSaveConfig = vi.hoisted(() => vi.fn());
-const mockSpawn = vi.hoisted(() => vi.fn());
-const mockCreateInterface = vi.hoisted(() => vi.fn());
 
 vi.mock("./config.js", () => ({
   saveConfig: mockSaveConfig,
 }));
 
-vi.mock("node:child_process", () => ({
-  spawn: mockSpawn,
-}));
+import { login, POLL_INTERVAL_MS } from "./login";
 
-vi.mock("node:readline", () => ({
-  createInterface: mockCreateInterface,
-}));
+// Injected test doubles (avoid mocking node:readline/node:child_process built-ins)
+const mockOpenBrowser = vi.fn();
+const mockWaitForEnter = vi.fn().mockResolvedValue(undefined);
 
-import { login, POLL_INTERVAL_MS, openBrowser } from "./login";
-
-describe("openBrowser", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockSpawn.mockReturnValue({ unref: vi.fn() });
-  });
-
-  it("calls spawn with platform-appropriate command", () => {
-    openBrowser("https://example.com/auth");
-
-    expect(mockSpawn).toHaveBeenCalledOnce();
-    const [cmd, args] = mockSpawn.mock.calls[0]!;
-
-    if (process.platform === "darwin") {
-      expect(cmd).toBe("open");
-      expect(args).toEqual(["https://example.com/auth"]);
-    } else if (process.platform === "win32") {
-      expect(cmd).toBe("start");
-      expect(args).toEqual(["", "https://example.com/auth"]);
-    } else {
-      expect(cmd).toBe("xdg-open");
-      expect(args).toEqual(["https://example.com/auth"]);
-    }
-  });
+const loginOpts = (overrides: Record<string, unknown> = {}) => ({
+  _openBrowser: mockOpenBrowser,
+  _waitForEnter: mockWaitForEnter,
+  ...overrides,
 });
 
 describe("login", () => {
@@ -49,16 +24,6 @@ describe("login", () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.stubGlobal("fetch", vi.fn());
-
-    // Mock readline to resolve immediately (simulates user pressing ENTER)
-    mockCreateInterface.mockReturnValue({
-      on: vi.fn(),
-      question: (_prompt: string, cb: () => void) => cb(),
-      close: vi.fn(),
-    });
-
-    // Mock spawn (for openBrowser)
-    mockSpawn.mockReturnValue({ unref: vi.fn() });
 
     // Default: TTY mode (interactive terminal)
     Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
@@ -81,7 +46,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://chapa.thecreativetoken.com");
+    const p = login("https://chapa.thecreativetoken.com", loginOpts());
     await advancePoll();
     await p;
 
@@ -99,7 +64,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await p;
 
@@ -118,7 +83,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com///");
+    const p = login("https://example.com///", loginOpts());
     await advancePoll();
     await p;
 
@@ -140,7 +105,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll(); // poll 1 -> pending
     await advancePoll(); // poll 2 -> pending
     await advancePoll(); // poll 3 -> approved
@@ -164,7 +129,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     for (let i = 0; i < 6; i++) await advancePoll();
     await p;
 
@@ -190,7 +155,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll(); // poll 1 -> 503
     await advancePoll(); // poll 2 -> approved
     await p;
@@ -214,7 +179,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { verbose: true });
+    const p = login("https://example.com", loginOpts({ verbose: true }));
     await advancePoll(); // poll 1 -> pending
     await advancePoll(); // poll 2 -> pending
     await advancePoll(); // poll 3 -> approved
@@ -242,7 +207,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { verbose: true });
+    const p = login("https://example.com", loginOpts({ verbose: true }));
     await advancePoll(); // poll 1 -> network error
     await advancePoll(); // poll 2 -> approved
     await p;
@@ -267,7 +232,7 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com", { insecure: true });
+    const p = login("https://example.com", loginOpts({ insecure: true }));
     await advancePoll();
     await p;
 
@@ -298,7 +263,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll(); // poll 1 -> TLS error
     await advancePoll(); // poll 2 -> approved
     await p;
@@ -323,7 +288,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -347,7 +312,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -373,7 +338,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { verbose: true });
+    const p = login("https://example.com", loginOpts({ verbose: true }));
     await advancePoll();
     await advancePoll();
     await p;
@@ -399,7 +364,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -429,7 +394,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -457,7 +422,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await advancePoll();
     await p;
@@ -475,17 +440,13 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await p;
 
-    expect(mockSpawn).toHaveBeenCalledOnce();
-    const [cmd, args] = mockSpawn.mock.calls[0]!;
-    const urlArg = (args as string[]).find((a: string) => a.includes("example.com/cli/authorize"));
-    expect(urlArg).toBeDefined();
-    if (process.platform === "darwin") {
-      expect(cmd).toBe("open");
-    }
+    expect(mockOpenBrowser).toHaveBeenCalledOnce();
+    const url = mockOpenBrowser.mock.calls[0]![0] as string;
+    expect(url).toContain("example.com/cli/authorize");
   });
 
   it("does not prompt or open browser in non-TTY mode", async () => {
@@ -499,15 +460,15 @@ describe("login", () => {
       ),
     );
 
-    const p = login("https://example.com");
+    const p = login("https://example.com", loginOpts());
     await advancePoll();
     await p;
 
     const allOutput = logSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allOutput).not.toContain("Press ENTER");
     expect(allOutput).toContain("Open the URL above");
-    expect(mockSpawn).not.toHaveBeenCalled();
-    expect(mockCreateInterface).not.toHaveBeenCalled();
+    expect(mockOpenBrowser).not.toHaveBeenCalled();
+    expect(mockWaitForEnter).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
 
@@ -526,7 +487,7 @@ describe("login", () => {
       );
     });
 
-    const p = login("https://example.com", { insecure: true });
+    const p = login("https://example.com", loginOpts({ insecure: true }));
     await advancePoll();
     await advancePoll();
     await p;
@@ -554,7 +515,7 @@ describe("login", () => {
       new Response(JSON.stringify({ status: "expired" }), { status: 200 }),
     );
 
-    await expect(login("https://example.com")).rejects.toThrow("process.exit");
+    await expect(login("https://example.com", loginOpts())).rejects.toThrow("process.exit");
     expect(mockExit).toHaveBeenCalledWith(1);
 
     mockExit.mockRestore();
