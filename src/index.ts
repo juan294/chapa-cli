@@ -1,4 +1,5 @@
 import { parseArgs } from "./cli.js";
+import type { CliArgs } from "./cli.js";
 import { resolveToken } from "./auth.js";
 import { fetchEmuStats } from "./fetch-emu.js";
 import { uploadSupplementalStats } from "./upload.js";
@@ -35,56 +36,30 @@ Options:
   --help, -h              Show this help message
 `;
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-
-  if (args.version) {
-    console.log(VERSION);
-    process.exit(0);
+/** Sentinel error for known CLI error exits (validation failures, expected errors). */
+class CliError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CliError";
   }
+}
 
-  if (args.help) {
-    console.log(HELP_TEXT);
-    process.exit(0);
+// ── Command Handlers ──────────────────────────────────────────────────────
+
+async function handleLogin(args: CliArgs): Promise<void> {
+  await login(args.server, { verbose: args.verbose, insecure: args.insecure });
+}
+
+function handleLogout(): void {
+  const removed = deleteConfig();
+  if (removed) {
+    console.log("Logged out. Credentials removed from ~/.chapa/credentials.json");
+  } else {
+    console.log("Not logged in (no credentials found).");
   }
+}
 
-  // --json and --verbose are mutually exclusive
-  if (args.json && args.verbose) {
-    console.error("Error: --json and --verbose cannot be used together.");
-    process.exit(1);
-  }
-
-  // Global TLS bypass for corporate networks — applies to all commands
-  if (args.insecure) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    console.warn("\n⚠ TLS certificate verification disabled (--insecure).");
-    console.warn("  Use only on corporate networks with TLS interception.\n");
-  }
-
-  // ── login ────────────────────────────────────────────────────────────
-  if (args.command === "login") {
-    await login(args.server, { verbose: args.verbose, insecure: args.insecure });
-    return;
-  }
-
-  // ── logout ───────────────────────────────────────────────────────────
-  if (args.command === "logout") {
-    const removed = deleteConfig();
-    if (removed) {
-      console.log("Logged out. Credentials removed from ~/.chapa/credentials.json");
-    } else {
-      console.log("Not logged in (no credentials found).");
-    }
-    return;
-  }
-
-  // ── merge ────────────────────────────────────────────────────────────
-  if (args.command !== "merge") {
-    console.error("Usage: chapa <login | logout | merge> [options]");
-    console.error("\nRun 'chapa --help' for more information.");
-    process.exit(1);
-  }
-
+async function handleMerge(args: CliArgs): Promise<void> {
   const log = createLogger({ verbose: args.verbose, json: args.json });
   log.time("total");
 
@@ -96,25 +71,25 @@ async function main(): Promise<void> {
 
   if (!emuHandle) {
     log.error("Error: --emu-handle is required.");
-    process.exit(1);
+    throw new CliError("--emu-handle is required");
   }
 
   if (!handle) {
     log.error("Error: No personal handle found. Run 'chapa login' first, or pass --handle.");
-    process.exit(1);
+    throw new CliError("No personal handle found");
   }
 
   // Resolve tokens — CLI config token takes priority over GITHUB_TOKEN for auth
   const emuToken = resolveToken(args.emuToken, "GITHUB_EMU_TOKEN");
   if (!emuToken) {
     log.error("Error: EMU token required. Use --emu-token or set GITHUB_EMU_TOKEN.");
-    process.exit(1);
+    throw new CliError("EMU token required");
   }
 
   const authToken = args.token ?? config?.token;
   if (!authToken) {
     log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
-    process.exit(1);
+    throw new CliError("Not authenticated");
   }
 
   // Fetch EMU stats
@@ -125,7 +100,7 @@ async function main(): Promise<void> {
 
   if (!emuStats) {
     log.error("Error: Failed to fetch EMU stats. Check your EMU token and handle.");
-    process.exit(1);
+    throw new CliError("Failed to fetch EMU stats");
   }
 
   log.info(formatStatsSummary(emuStats));
@@ -177,7 +152,7 @@ async function main(): Promise<void> {
       cliVersion: VERSION,
     });
 
-    process.exit(1);
+    throw new CliError(result.error ?? "Upload failed");
   }
 
   // ── Success output ───────────────────────────────────────────────────
@@ -225,9 +200,66 @@ async function main(): Promise<void> {
   });
 }
 
+// ── Main Dispatcher ───────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+
+  if (args.version) {
+    console.log(VERSION);
+    return;
+  }
+
+  if (args.help) {
+    console.log(HELP_TEXT);
+    return;
+  }
+
+  // --json and --verbose are mutually exclusive
+  if (args.json && args.verbose) {
+    console.error("Error: --json and --verbose cannot be used together.");
+    throw new CliError("--json and --verbose cannot be used together");
+  }
+
+  // Global TLS bypass for corporate networks — applies to all commands
+  if (args.insecure) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    console.warn("\n⚠ TLS certificate verification disabled (--insecure).");
+    console.warn("  Use only on corporate networks with TLS interception.\n");
+  }
+
+  if (args.command === "login") {
+    await handleLogin(args);
+    return;
+  }
+
+  if (args.command === "logout") {
+    handleLogout();
+    return;
+  }
+
+  if (args.command === "merge") {
+    await handleMerge(args);
+    return;
+  }
+
+  // Unknown or missing command
+  console.error("Usage: chapa <login | logout | merge> [options]");
+  console.error("\nRun 'chapa --help' for more information.");
+  throw new CliError("Unknown command");
+}
+
 /** Round to 1 decimal place. */
 function round(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-main();
+// ── Error boundary ────────────────────────────────────────────────────────
+main().catch((err: unknown) => {
+  // CliError messages are already printed by the handlers above;
+  // only print for unexpected errors.
+  if (!(err instanceof CliError)) {
+    console.error(err instanceof Error ? err.message : String(err));
+  }
+  process.exit(1);
+});

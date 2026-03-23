@@ -152,25 +152,24 @@ describe("index.ts command dispatch", () => {
 
   // ── --version ────────────────────────────────────────────────────────
 
-  it("outputs version and exits with code 0 for --version", async () => {
+  it("outputs version and returns cleanly for --version", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({ version: true }));
 
     await runMain();
 
-    expect(mockExit).toHaveBeenCalledWith(0);
     const output = spyOutput(logSpy);
     // In dev/test mode, __CLI_VERSION__ is undefined so VERSION = "0.0.0-dev"
     expect(output).toContain("0.0.0-dev");
+    expect(mockExit).not.toHaveBeenCalled();
   });
 
   // ── --help ───────────────────────────────────────────────────────────
 
-  it("outputs help text and exits with code 0 for --help", async () => {
+  it("outputs help text and returns cleanly for --help", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({ help: true }));
 
     await runMain();
 
-    expect(mockExit).toHaveBeenCalledWith(0);
     const output = spyOutput(logSpy);
     expect(output).toContain("chapa-cli");
     expect(output).toContain("Commands:");
@@ -179,6 +178,7 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("chapa merge");
     expect(output).toContain("--emu-handle");
     expect(output).toContain("--help");
+    expect(mockExit).not.toHaveBeenCalled();
   });
 
   it("help text includes --json and --verbose flags", async () => {
@@ -707,5 +707,91 @@ describe("index.ts command dispatch", () => {
       }),
     );
     expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  // ── W12: top-level error boundary ─────────────────────────────────────
+
+  it("catches unexpected errors in main() and exits 1 via error boundary", async () => {
+    // Make parseArgs throw an unexpected error (simulating a bug)
+    mockParseArgs.mockImplementation(() => {
+      throw new Error("Unexpected kaboom");
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Unexpected kaboom");
+  });
+
+  it("error boundary handles non-Error thrown values", async () => {
+    // Throw a string instead of an Error
+    mockParseArgs.mockImplementation(() => {
+      throw "string error value";
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("string error value");
+  });
+
+  // ── W9: handler errors surface correctly ──────────────────────────────
+
+  it("exits 1 when login() throws an unexpected error", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+    mockLogin.mockRejectedValue(new Error("Network timeout"));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Network timeout");
+  });
+
+  it("exits 1 when fetchEmuStats throws an unexpected error", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockRejectedValue(new Error("GraphQL schema mismatch"));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("GraphQL schema mismatch");
+  });
+
+  it("exits 1 when uploadSupplementalStats throws an unexpected error", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue({
+      commitsTotal: 42,
+      prsMergedCount: 5,
+      reviewsSubmittedCount: 3,
+    });
+    mockUploadSupplementalStats.mockRejectedValue(new Error("Connection reset"));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Connection reset");
   });
 });
