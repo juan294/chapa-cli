@@ -51,9 +51,13 @@ describe("login", () => {
     vi.stubGlobal("fetch", vi.fn());
 
     // Mock readline to resolve immediately (simulates user pressing ENTER)
-    mockCreateInterface.mockReturnValue({
-      question: (_prompt: string, cb: () => void) => cb(),
-      close: vi.fn(),
+    mockCreateInterface.mockImplementation(() => {
+      const listeners: Record<string, Array<() => void>> = {};
+      return {
+        on: (event: string, cb: () => void) => { (listeners[event] ??= []).push(cb); },
+        question: (_prompt: string, cb: () => void) => cb(),
+        close: () => { listeners["close"]?.forEach((cb) => cb()); },
+      };
     });
 
     // Mock spawn (for openBrowser)

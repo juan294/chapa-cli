@@ -40,15 +40,16 @@ export function openBrowser(url: string): void {
   // Windows 'start' treats the first quoted arg as a window title
   const args = process.platform === "win32" ? ["", url] : [url];
 
-  spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  const child = spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  child.unref();
 }
 
 export function waitForEnter(): Promise<void> {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.on("close", () => resolve());
     rl.question("", () => {
       rl.close();
-      resolve();
     });
   });
 }
