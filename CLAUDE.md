@@ -76,9 +76,7 @@ pnpm run typecheck # TypeScript type checking
 pnpm run build     # production build
 ```
 
-### CRITICAL: Run verification commands sequentially, NEVER in parallel
-Never run typecheck, lint, or test as parallel sibling Bash tool calls.
-Chain with `&&` or `;`: `pnpm run typecheck 2>&1; pnpm test 2>&1`
+Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 
 ## Release Process
 
@@ -133,56 +131,15 @@ claude -p "Read issue #240 and implement the fix with TDD" --allowedTools "Edit,
 
 ## RPI Workflow
 
-This project follows the Research-Plan-Implement (RPI) pattern.
-All significant changes go through four phases:
+This project follows Research-Plan-Implement (RPI).
+
 1. /research -- Understand the codebase as-is
 2. /plan -- Create a phased implementation spec
 3. /implement -- Execute one phase at a time with review gates
 4. /validate -- Verify implementation against the plan
 
-### Context Management
-
-- Each RPI phase should be its own conversation. Don't run research + plan + implement in one session.
-- Use `/clear` between unrelated tasks. Use `/compact` when context is heavy but the task continues.
-- Subagents are context control mechanisms -- they search/read in their window and return only distilled results.
-- Research and planning happen on the default branch. Implementation happens in worktrees or feature branches.
-- If research comes back wrong, throw it out and restart with more specific steering.
-
-### Rules for All Phases
-
-- Read all mentioned files COMPLETELY before doing anything else.
-- Never suggest improvements during research -- only document what exists.
-- Every code reference must include file:line.
-- Spawn parallel subagents for independent research tasks.
-- Wait for ALL subagents before synthesizing.
-- Never write documents with placeholder values.
-
-### Rules for Implementation
-
-- Follow the atomic loop: implement -> review (plan compliance) -> fix -> approve -> `/simplify` (code quality) -> verify.
-- Run `/simplify` after reviewer approval -- it handles code reuse, quality, and efficiency in one native pass.
-- Check for `[batch-eligible]` phases in the plan -- use `/batch` to execute independent phases in parallel.
-- Run ALL automated verification after each phase.
-- STOP after each phase and wait for human confirmation.
-- Never auto-proceed to the next phase.
-- If the plan doesn't match reality, STOP and explain the mismatch.
-
-### Pre-Release Workflow
-
-```
-/pre-launch -> /remediate -> /update-docs -> /release
-```
-
-- `/remediate` -- resolve all pre-launch findings with parallel TDD agents, CI verification
-- `/update-docs` -- refreshes all documentation, diagrams, version references, and inline code docs
-- `/release` -- version bump, CHANGELOG, tag, GitHub release, registry publish advisory
-
-### Testing Philosophy
-
-- Prefer automated verification over manual testing.
-- Manual testing is ONLY for: sudo, hardware, new installs, truly visual-only validation.
-- If you can verify it with a command or tool, do so automatically.
-- Don't use Claude for linting/formatting -- use automated tools and hooks instead.
+Each phase is its own conversation. STOP after each phase.
+Use /clear between tasks, /compact when context is heavy.
 
 ## Working Patterns
 
@@ -225,15 +182,7 @@ cd /Users/dev/project && pnpm run test
 </example>
 </examples>
 
-Domain-specific rules (git, CI, deployment, Python, macOS, Supabase, GitHub CLI, multi-agent) are in `.claude/skills/` -- loaded automatically when relevant.
-
-<important if="you are pushing code to a remote">
-### Push Accountability
-
-After pushing to the development branch, spawn a background agent to monitor CI.
-If CI fails, the background agent investigates, fixes, and re-pushes.
-Main terminal continues working -- push verification is non-blocking.
-</important>
+Rules load from `.claude/rules/` and `.claude/skills/` automatically.
 
 ## TDD Protocol
 
@@ -244,13 +193,10 @@ All code changes follow Red-Green-Refactor:
 
 No exceptions. Bug fixes need a regression test. Refactors need existing coverage. No "tests later."
 
-## Agent Autonomy
+## Agent Behavior
 
-Exhaust CLI tools, shell commands, and file tools before asking the user. Only escalate when genuinely impossible. Production-affecting actions need explicit human authorization.
-
-## Memory Management
-
-Save operational lessons to auto memory immediately -- CI failure patterns, environment quirks, project conventions, permission issues. Don't wait to be asked.
+Exhaust tools before asking the user. Production actions need human authorization.
+Save operational lessons to auto memory immediately. Don't wait to be asked.
 
 ## Project File Locations
 
