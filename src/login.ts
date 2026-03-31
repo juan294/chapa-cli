@@ -34,7 +34,7 @@ interface LoginOptions {
   _waitForEnter?: () => Promise<void>;
 }
 
-export function openBrowser(url: string): void {
+function openBrowser(url: string): void {
   const cmd = process.platform === "darwin"
     ? "open"
     : process.platform === "win32"
@@ -48,7 +48,7 @@ export function openBrowser(url: string): void {
   child.unref();
 }
 
-export function waitForEnter(): Promise<void> {
+function waitForEnter(): Promise<void> {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     rl.on("close", () => resolve());

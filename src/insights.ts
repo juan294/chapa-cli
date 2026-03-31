@@ -252,14 +252,14 @@ export function parseInsightsHtml(html: string): InsightsUpload {
 
 import type { Logger } from "./logger.js";
 
-export interface InsightsUploadOptions {
+interface InsightsUploadOptions {
   data: InsightsUpload;
   token: string;
   serverUrl: string;
   logger?: Logger;
 }
 
-export interface InsightsUploadResult {
+interface InsightsUploadResult {
   success: boolean;
   error?: string;
   craftScore?: {
