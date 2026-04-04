@@ -1,0 +1,167 @@
+<mxGraphModel adaptiveColors="auto" dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="title" value="chapa-cli Architecture" style="text;html=1;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;whiteSpace=wrap;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="400" y="20" width="600" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="subtitle" value="CLI tool merging GitHub EMU contribution data into Chapa developer impact badges" style="text;html=1;fontSize=12;align=center;verticalAlign=middle;whiteSpace=wrap;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="350" y="55" width="700" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="swim_cli" value="CLI Layer" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
+      <mxGeometry x="40" y="100" width="320" height="340" as="geometry"/>
+    </mxCell>
+    <mxCell id="cli_entry" value="CLI Entry&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;index.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="90" y="45" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cli_args" value="Argument Parsing&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;cli.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="90" y="120" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cli_logger" value="Logger&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;logger.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="20" y="210" width="120" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cli_telemetry" value="Telemetry&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;telemetry.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="170" y="210" width="120" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cli_insights" value="Insights Parser&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;insights.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="90" y="280" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_entry_args" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_entry" target="cli_args" parent="swim_cli">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_args_logger" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_args" target="cli_logger" parent="swim_cli">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_args_telemetry" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_args" target="cli_telemetry" parent="swim_cli">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="swim_auth" value="Auth Layer" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
+      <mxGeometry x="400" y="100" width="280" height="340" as="geometry"/>
+    </mxCell>
+    <mxCell id="auth_oauth" value="OAuth Device Flow&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;login.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="swim_auth">
+      <mxGeometry x="70" y="45" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="auth_token" value="Token Resolution&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;auth.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="swim_auth">
+      <mxGeometry x="70" y="120" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="auth_config" value="Credential Storage&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;config.ts&lt;/i&gt;&lt;br&gt;&lt;i style=&quot;font-size:9px;color:#aaa&quot;&gt;~/.chapa/credentials.json&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;" vertex="1" parent="swim_auth">
+      <mxGeometry x="50" y="210" width="180" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_oauth_token" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="auth_oauth" target="auth_token" parent="swim_auth">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_token_config" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;" edge="1" source="auth_token" target="auth_config" parent="swim_auth">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="swim_data" value="Data Layer" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
+      <mxGeometry x="720" y="100" width="280" height="340" as="geometry"/>
+    </mxCell>
+    <mxCell id="data_fetch" value="GitHub Integration&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;fetch-emu.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="swim_data">
+      <mxGeometry x="70" y="45" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="data_shared" value="Stats Aggregation&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;shared.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="swim_data">
+      <mxGeometry x="70" y="120" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="data_upload" value="Upload to Chapa&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;upload.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="swim_data">
+      <mxGeometry x="70" y="210" width="140" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_fetch_shared" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="data_fetch" target="data_shared" parent="swim_data">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_shared_upload" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="data_shared" target="data_upload" parent="swim_data">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="swim_ext" value="External Services" style="swimlane;startSize=30;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
+      <mxGeometry x="1040" y="100" width="280" height="340" as="geometry"/>
+    </mxCell>
+    <mxCell id="ext_github" value="GitHub GraphQL API&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;Commits, PRs, Reviews&lt;br&gt;Lines, Repos&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="swim_ext">
+      <mxGeometry x="50" y="45" width="180" height="65" as="geometry"/>
+    </mxCell>
+    <mxCell id="ext_chapa" value="Chapa Server&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;6 API endpoints&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="swim_ext">
+      <mxGeometry x="50" y="150" width="180" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="ext_browser" value="Browser&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;OAuth auto-open&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;" vertex="1" parent="swim_ext">
+      <mxGeometry x="50" y="250" width="180" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_args_oauth" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#6c8ebf;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="cli_args" target="auth_oauth" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_args_fetch" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;exitX=1;exitY=0.5;entryX=0;entryY=0.5;curved=1;" edge="1" source="cli_args" target="data_fetch" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="380" y="245"/>
+          <mxPoint x="380" y="290"/>
+          <mxPoint x="700" y="290"/>
+          <mxPoint x="700" y="170"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="edge_token_fetch" value="token" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#999999;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.75;fontSize=10;" edge="1" source="auth_token" target="data_fetch" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="700" y="245"/>
+          <mxPoint x="700" y="182"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="edge_fetch_github" value="GraphQL" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;" edge="1" source="data_fetch" target="ext_github" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_upload_chapa" value="POST" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;" edge="1" source="data_upload" target="ext_chapa" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_oauth_browser" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="auth_oauth" target="ext_browser" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1020" y="170"/>
+          <mxPoint x="1020" y="377"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="edge_insights_upload" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.75;fontSize=10;" edge="1" source="cli_insights" target="data_upload" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="380" y="505"/>
+          <mxPoint x="700" y="505"/>
+          <mxPoint x="700" y="347"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="legend_title" value="Legend" style="text;html=1;fontSize=11;fontStyle=1;align=left;verticalAlign=middle;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="40" y="470" width="60" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_cli" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+      <mxGeometry x="40" y="495" width="16" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_cli_label" value="CLI Layer" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="62" y="493" width="70" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_auth" value="" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+      <mxGeometry x="140" y="495" width="16" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_auth_label" value="Auth Layer" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="162" y="493" width="70" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_data" value="" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+      <mxGeometry x="240" y="495" width="16" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_data_label" value="Data Layer" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="262" y="493" width="70" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_ext" value="" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+      <mxGeometry x="340" y="495" width="16" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_ext_label" value="External Services" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="362" y="493" width="100" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="legend_dashed" value="" style="endArrow=classic;dashed=1;strokeColor=#999999;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="480" y="503" as="sourcePoint"/>
+        <mxPoint x="530" y="503" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="legend_dashed_label" value="Indirect / token flow" style="text;html=1;fontSize=10;align=left;verticalAlign=middle;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="535" y="493" width="110" height="20" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
