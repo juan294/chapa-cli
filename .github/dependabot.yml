@@ -12,6 +12,9 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      - dependency-name: vite
+        reason: managed via pnpm overrides in package.json
 
   - package-ecosystem: github-actions
     directory: /
