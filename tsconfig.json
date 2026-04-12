@@ -10,7 +10,8 @@
     "isolatedModules": true,
     "noUncheckedIndexedAccess": true,
     "declaration": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
