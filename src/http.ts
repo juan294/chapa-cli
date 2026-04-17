@@ -1,3 +1,5 @@
+import { normalizeErrorCauseChain } from "./shared.js";
+
 export type RequestFailureCategory =
   | "timeout"
   | "network"
@@ -35,63 +37,26 @@ interface RequestOptions<TFallback> {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-function getRootMessage(err: Error): string {
-  let current: unknown = err;
-  let message = "";
-  while (current instanceof Error) {
-    message = current.message;
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return message;
-}
-
-function getDetailedMessage(err: Error): string {
-  const parts = [err.message];
-  let current: unknown = err.cause;
-  while (current instanceof Error) {
-    if (current.message && current.message !== parts[parts.length - 1]) {
-      parts.push(current.message);
-    }
-    current = current.cause;
-  }
-  return parts.join(" → ");
-}
-
-function getErrorChain(err: Error): string {
-  const parts: string[] = [];
-  let current: unknown = err;
-  while (current instanceof Error) {
-    parts.push(current.message);
-    const code = (current as Error & { code?: string }).code;
-    if (code) {
-      parts.push(code);
-    }
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return parts.join(" | ");
-}
-
 function toRequestFailure(error: unknown, timeoutMs: number): RequestFailure {
   const err = error instanceof Error ? error : new Error(String(error));
-  const detail = getRootMessage(err);
-  const chain = getErrorChain(err);
+  const normalized = normalizeErrorCauseChain(err);
 
   if (err.name === "TimeoutError") {
     return {
       ok: false,
       category: "timeout",
       message: `Request timed out after ${timeoutMs}ms`,
-      detail,
-      chain,
+      detail: normalized.rootMessage,
+      chain: normalized.chain,
     };
   }
 
   return {
     ok: false,
     category: "network",
-    message: getDetailedMessage(err) || detail || err.message || "Network request failed",
-    detail,
-    chain,
+    message: normalized.detail || normalized.rootMessage || err.message || "Network request failed",
+    detail: normalized.rootMessage,
+    chain: normalized.chain,
   };
 }
 

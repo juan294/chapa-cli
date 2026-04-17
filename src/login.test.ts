@@ -7,7 +7,7 @@ vi.mock("./config.js", () => ({
   saveConfig: mockSaveConfig,
 }));
 
-import { login, POLL_INTERVAL_MS } from "./login";
+import { getBrowserLaunchSpec, login, POLL_INTERVAL_MS } from "./login";
 
 // Injected test doubles (avoid mocking node:readline/node:child_process built-ins)
 const mockOpenBrowser = vi.fn();
@@ -17,6 +17,16 @@ const loginOpts = (overrides: Record<string, unknown> = {}) => ({
   _openBrowser: mockOpenBrowser,
   _waitForEnter: mockWaitForEnter,
   ...overrides,
+});
+
+describe("getBrowserLaunchSpec", () => {
+  it("avoids shell-based browser launch on Windows", () => {
+    expect(getBrowserLaunchSpec("https://example.com", "win32")).toEqual({
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", "https://example.com"],
+      shell: false,
+    });
+  });
 });
 
 describe("login", () => {

@@ -184,18 +184,46 @@ export function stripTrailingSlashes(url: string): string {
 // Error chain utilities
 // ---------------------------------------------------------------------------
 
+interface NormalizedErrorCauseChain {
+  rootMessage: string;
+  detail: string;
+  chain: string;
+}
+
+export function normalizeErrorCauseChain(err: unknown): NormalizedErrorCauseChain {
+  const messages: string[] = [];
+  const chainParts: string[] = [];
+  let current = err;
+
+  while (current instanceof Error) {
+    if (current.message) {
+      chainParts.push(current.message);
+      if (current.message !== messages[messages.length - 1]) {
+        messages.push(current.message);
+      }
+    }
+
+    const code = (current as Error & { code?: string }).code;
+    if (code) {
+      chainParts.push(code);
+    }
+
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+
+  return {
+    rootMessage: messages[messages.length - 1] ?? "",
+    detail: messages.join(" → "),
+    chain: chainParts.join(" | "),
+  };
+}
+
 /**
  * Walk the error `.cause` chain and return the deepest message.
  * Node.js `fetch()` wraps real errors: Error("fetch failed", { cause: Error("UNABLE_TO_VERIFY_LEAF_SIGNATURE") })
  */
 export function getRootErrorMessage(err: unknown): string {
-  let current = err;
-  let message = "";
-  while (current instanceof Error) {
-    message = current.message;
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return message;
+  return normalizeErrorCauseChain(err).rootMessage;
 }
 
 /**
@@ -203,28 +231,12 @@ export function getRootErrorMessage(err: unknown): string {
  * Includes both .message and .code from each error in the chain.
  */
 export function getFullErrorChain(err: unknown): string {
-  const parts: string[] = [];
-  let current = err;
-  while (current instanceof Error) {
-    parts.push(current.message);
-    const code = (current as Error & { code?: string }).code;
-    if (code) parts.push(code);
-    current = (current as Error & { cause?: unknown }).cause;
-  }
-  return parts.join(" | ");
+  return normalizeErrorCauseChain(err).chain;
 }
 
 /** Extract a useful error message, walking error.cause chain for root cause. */
 export function extractErrorDetail(err: Error): string {
-  const parts = [err.message];
-  let current: unknown = err.cause;
-  while (current instanceof Error) {
-    if (current.message && current.message !== err.message) {
-      parts.push(current.message);
-    }
-    current = current.cause;
-  }
-  return parts.join(" → ");
+  return normalizeErrorCauseChain(err).detail;
 }
 
 // ---------------------------------------------------------------------------
