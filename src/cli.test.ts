@@ -25,6 +25,7 @@ describe("parseArgs", () => {
     expect(args.emuToken).toBe("ghp_emu");
     expect(args.token).toBe("gho_personal");
     expect(args.server).toBe("http://localhost:3001");
+    expect(args.serverExplicit).toBe(true);
   });
 
   it("uses default server URL when not provided", () => {
@@ -34,16 +35,26 @@ describe("parseArgs", () => {
       "--emu-handle", "Juan_corp",
     ]);
     expect(args.server).toBe("https://chapa.thecreativetoken.com");
+    expect(args.serverExplicit).toBe(false);
   });
 
   it("returns null command when no positional arg", () => {
     const args = parseArgs(["--handle", "juan294"]);
     expect(args.command).toBeNull();
+    expect(args.unknownCommand).toBeNull();
   });
 
-  it("returns null command for unknown commands", () => {
+  it("preserves unknown command tokens for targeted errors", () => {
     const args = parseArgs(["unknown", "--handle", "juan294"]);
     expect(args.command).toBeNull();
+    expect(args.unknownCommand).toBe("unknown");
+  });
+
+  it("accepts the command after flags", () => {
+    const args = parseArgs(["--json", "merge", "--emu-handle", "corp"]);
+    expect(args.command).toBe("merge");
+    expect(args.unknownCommand).toBeNull();
+    expect(args.json).toBe(true);
   });
 
   it("sets version flag when --version is passed", () => {

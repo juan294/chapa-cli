@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { saveConfig } from "./config.js";
+import { DEFAULT_SERVER } from "./cli.js";
 import { stripTrailingSlashes } from "./shared.js";
 import type { RequestFailure } from "./http.js";
 import { requestJson } from "./http.js";
@@ -169,6 +170,9 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
       });
       console.log(`\nLogged in as ${data.handle}!`);
       console.log("Credentials saved to ~/.chapa/credentials.json");
+      if (baseUrl !== DEFAULT_SERVER) {
+        console.log(`Future merge and insights commands will reuse ${baseUrl} until you override it with --server.`);
+      }
       return;
     }
 

@@ -73,12 +73,14 @@ function loggerOutput(method: ReturnType<typeof vi.fn>): string {
 function defaultArgs(overrides: Record<string, unknown> = {}) {
   return {
     command: null,
+    unknownCommand: null,
     handle: undefined,
     emuHandle: undefined,
     emuToken: undefined,
     token: undefined,
     file: undefined,
     server: "https://chapa.thecreativetoken.com",
+    serverExplicit: false,
     verbose: false,
     json: false,
     insecure: false,
@@ -280,18 +282,28 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("--verbose");
   });
 
-  // ── --json + --verbose mutual exclusion ───────────────────────────────
+  // ── --json + --verbose coexistence ────────────────────────────────────
 
-  it("exits 1 when --json and --verbose are both set", async () => {
-    mockParseArgs.mockReturnValue(defaultArgs({ json: true, verbose: true }));
+  it("allows --json and --verbose together", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      emuHandle: "corp_user",
+      handle: "juan294",
+      token: "auth-tok",
+      json: true,
+      verbose: true,
+    }));
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 1 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
 
-    expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
-    expect(output).toContain("--json");
-    expect(output).toContain("--verbose");
-    expect(output).toContain("cannot be used together");
+    expect(mockCreateLogger).toHaveBeenCalledWith({ verbose: true, json: true });
+    expect(mockExit).not.toHaveBeenCalled();
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    expect(JSON.parse(written).success).toBe(true);
   });
 
   // ── --insecure ───────────────────────────────────────────────────────
@@ -348,6 +360,22 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("rejects non-HTTPS login servers outside localhost", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "login",
+      server: "http://insecure.example.com",
+      serverExplicit: true,
+    }));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockLogin).not.toHaveBeenCalled();
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("HTTPS");
+    expect(output).toContain("localhost");
+  });
+
   it("does not import insights module for login command", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
 
@@ -392,6 +420,20 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("surfaces config delete errors during logout", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "logout" }));
+    mockDeleteConfig.mockImplementation(() => {
+      throw new Error("Could not remove ~/.chapa/credentials.json: EACCES");
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Could not remove");
+    expect(output).toContain("credentials.json");
+  });
+
   // ── Unknown / no command ─────────────────────────────────────────────
 
   it("shows usage error and exits 1 for unknown command", async () => {
@@ -404,6 +446,17 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("Usage:");
     expect(output).toContain("login | logout | merge | insights");
     expect(output).toContain("--help");
+  });
+
+  it("shows a targeted error for an unknown command token", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: null, unknownCommand: "mrege" }));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = spyOutput(errorSpy);
+    expect(output).toContain("Unknown command 'mrege'");
+    expect(output).toContain("login | logout | merge | insights");
   });
 
   // ── merge: logger creation ──────────────────────────────────────────
@@ -838,7 +891,88 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
-  // ── merge: explicit server overrides config server ───────────────────
+  it("warns when merge implicitly uses a saved non-default server", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "merge", emuHandle: "corp_user" }),
+    );
+    mockLoadConfig.mockReturnValue({
+      token: "config-auth-tok",
+      handle: "config-user",
+      server: "https://custom.server.com",
+    });
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    const warnings = loggerOutput(mockLogger.warn);
+    expect(warnings).toContain("Using saved server");
+    expect(warnings).toContain("https://custom.server.com");
+  });
+
+  it("rejects non-HTTPS merge servers outside localhost", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://insecure.example.com",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockFetchEmuStats).not.toHaveBeenCalled();
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("HTTPS");
+    expect(output).toContain("localhost");
+  });
+
+  it("allows localhost HTTP servers for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://localhost:3001",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: "http://localhost:3001" }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("surfaces config corruption instead of treating merge as logged out", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "merge", emuHandle: "corp_user" }),
+    );
+    mockLoadConfig.mockImplementation(() => {
+      throw new Error("Stored credentials are invalid JSON. Delete ~/.chapa/credentials.json and log in again.");
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("invalid JSON");
+    expect(output).toContain("credentials.json");
+  });
 
   // ── insights: missing --file ───────────────────────────────────────
 
@@ -881,6 +1015,20 @@ describe("index.ts command dispatch", () => {
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Not authenticated");
     expect(output).toContain("chapa login");
+  });
+
+  it("surfaces config corruption instead of treating insights as logged out", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights", file: "report.html" }));
+    mockLoadConfig.mockImplementation(() => {
+      throw new Error("Stored credentials are missing required fields. Delete ~/.chapa/credentials.json and log in again.");
+    });
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("missing required fields");
+    expect(output).toContain("credentials.json");
   });
 
   // ── insights: creates logger with correct flags ────────────────────
@@ -1097,7 +1245,71 @@ describe("index.ts command dispatch", () => {
     expect(jsonOutput.error).toContain("429");
   });
 
-  // ── merge: explicit server overrides config server ───────────────────
+  it("uses explicit default --server over a saved custom server for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "https://chapa.thecreativetoken.com",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue({
+      token: "t",
+      handle: "h",
+      server: "https://saved.server.com",
+    });
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serverUrl: "https://chapa.thecreativetoken.com",
+      }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("uses explicit default --server over a saved custom server for insights", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "insights",
+        file: "report.html",
+        handle: "user",
+        token: "tok",
+        server: "https://chapa.thecreativetoken.com",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue({
+      token: "t",
+      handle: "h",
+      server: "https://saved.server.com",
+    });
+    mockUploadInsights.mockResolvedValue({
+      success: true,
+      craftScore: {
+        craftScore: 72,
+        tier: "Expert",
+        dimensions: { proficiency: 80, effectiveness: 70, sophistication: 66 },
+        reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      },
+    });
+
+    await runMain();
+
+    expect(mockUploadInsights).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serverUrl: "https://chapa.thecreativetoken.com",
+      }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
 
   it("uses explicit --server flag over config server when non-default", async () => {
     mockParseArgs.mockReturnValue(
@@ -1107,6 +1319,7 @@ describe("index.ts command dispatch", () => {
         handle: "juan294",
         token: "auth-tok",
         server: "https://my-custom.example.com",
+        serverExplicit: true,
       }),
     );
     mockLoadConfig.mockReturnValue({

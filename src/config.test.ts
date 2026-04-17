@@ -55,19 +55,19 @@ describe("CLI config", () => {
     expect(deleteConfig()).toBe(false);
   });
 
-  it("loadConfig returns null for malformed JSON", () => {
+  it("throws a descriptive error for malformed JSON", () => {
     const dir = join(tempDir, ".chapa");
     const { mkdirSync, writeFileSync } = require("node:fs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "credentials.json"), "not json");
-    expect(loadConfig()).toBeNull();
+    expect(() => loadConfig()).toThrow(/invalid JSON/i);
   });
 
-  it("loadConfig returns null for JSON missing required fields", () => {
+  it("throws a descriptive error for JSON missing required fields", () => {
     const dir = join(tempDir, ".chapa");
     const { mkdirSync, writeFileSync } = require("node:fs");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "credentials.json"), JSON.stringify({ token: "t" }));
-    expect(loadConfig()).toBeNull();
+    expect(() => loadConfig()).toThrow(/missing required fields/i);
   });
 });
