@@ -3,21 +3,77 @@ import type { InsightsUpload } from "./shared.js";
 import { stripTrailingSlashes } from "./shared.js";
 import { requestJson } from "./http.js";
 
-function findChartCard(doc: Document, titlePrefix: string): Element | null {
-  const cards = doc.querySelectorAll(".chart-card");
-  for (const card of cards) {
-    const title = card.querySelector(".chart-title")?.textContent?.trim() ?? "";
-    if (title.startsWith(titlePrefix)) return card;
-  }
-  return null;
+interface ChartCards {
+  toolUsage: Element | null;
+  sessionTypes: Element | null;
+  outcomes: Element | null;
+  friction: Element | null;
+  satisfaction: Element | null;
+  toolErrors: Element | null;
+  multiClauding: Element | null;
+  responseTime: Element | null;
 }
 
-function extractBarChart(
-  doc: Document,
-  chartTitle: string,
-): Record<string, number> {
+function collectChartCards(doc: Document): ChartCards {
+  const cards: ChartCards = {
+    toolUsage: null,
+    sessionTypes: null,
+    outcomes: null,
+    friction: null,
+    satisfaction: null,
+    toolErrors: null,
+    multiClauding: null,
+    responseTime: null,
+  };
+
+  for (const card of doc.querySelectorAll(".chart-card")) {
+    const title = card.querySelector(".chart-title")?.textContent?.trim() ?? "";
+
+    if (!cards.toolUsage && title.startsWith("Top Tools Used")) {
+      cards.toolUsage = card;
+      continue;
+    }
+
+    if (!cards.sessionTypes && title.startsWith("Session Types")) {
+      cards.sessionTypes = card;
+      continue;
+    }
+
+    if (!cards.outcomes && title.startsWith("Outcomes")) {
+      cards.outcomes = card;
+      continue;
+    }
+
+    if (!cards.friction && title.startsWith("Primary Friction Types")) {
+      cards.friction = card;
+      continue;
+    }
+
+    if (!cards.satisfaction && title.startsWith("Inferred Satisfaction")) {
+      cards.satisfaction = card;
+      continue;
+    }
+
+    if (!cards.toolErrors && title.startsWith("Tool Errors Encountered")) {
+      cards.toolErrors = card;
+      continue;
+    }
+
+    if (!cards.multiClauding && title.startsWith("Multi-Clauding")) {
+      cards.multiClauding = card;
+      continue;
+    }
+
+    if (!cards.responseTime && title.startsWith("User Response Time")) {
+      cards.responseTime = card;
+    }
+  }
+
+  return cards;
+}
+
+function extractBarChart(card: Element | null): Record<string, number> {
   const result: Record<string, number> = {};
-  const card = findChartCard(doc, chartTitle);
   if (!card) return result;
 
   const rows = card.querySelectorAll(".bar-row");
@@ -113,13 +169,12 @@ function extractVolumeStats(doc: Document): {
   return result;
 }
 
-function parseMultiClauding(doc: Document): {
+function parseMultiClauding(card: Element | null): {
   overlapEvents: number;
   sessionsInvolved: number;
   messagePercent: number;
 } {
   const result = { overlapEvents: 0, sessionsInvolved: 0, messagePercent: 0 };
-  const card = findChartCard(doc, "Multi-Clauding");
   if (!card) return result;
 
   const statDivs = card.querySelectorAll("div[style]");
@@ -147,12 +202,11 @@ function parseMultiClauding(doc: Document): {
   return result;
 }
 
-function parseResponseTime(doc: Document): {
+function parseResponseTime(card: Element | null): {
   medianSeconds: number;
   averageSeconds: number;
 } {
   const result = { medianSeconds: 0, averageSeconds: 0 };
-  const card = findChartCard(doc, "User Response Time");
   if (!card) return result;
 
   const text = card.textContent ?? "";
@@ -164,7 +218,6 @@ function parseResponseTime(doc: Document): {
 
   return result;
 }
-
 function mapOutcomes(chart: Record<string, number>): {
   fullyAchieved: number;
   mostlyAchieved: number;
@@ -212,14 +265,8 @@ export function parseInsightsHtml(html: string): InsightsUpload {
     volume.messages = subtitle.messages;
   }
 
-  const toolUsage = extractBarChart(doc, "Top Tools Used");
-  const sessionTypes = extractBarChart(doc, "Session Types");
-  const outcomesChart = extractBarChart(doc, "Outcomes");
-  const frictionChart = extractBarChart(doc, "Primary Friction Types");
-  const satisfactionChart = extractBarChart(doc, "Inferred Satisfaction");
-  const toolErrors = extractBarChart(doc, "Tool Errors Encountered");
-  const multiClauding = parseMultiClauding(doc);
-  const responseTime = parseResponseTime(doc);
+  const cards = collectChartCards(doc);
+  const toolUsage = extractBarChart(cards.toolUsage);
   const totalToolCalls = Object.values(toolUsage).reduce((a, b) => a + b, 0);
 
   return {
@@ -237,13 +284,13 @@ export function parseInsightsHtml(html: string): InsightsUpload {
       msgsPerDay: volume.msgsPerDay,
     },
     toolUsage,
-    sessionTypes,
-    outcomes: mapOutcomes(outcomesChart),
-    friction: mapFriction(frictionChart),
-    satisfaction: mapSatisfaction(satisfactionChart),
-    multiClauding,
-    responseTime,
-    toolErrors,
+    sessionTypes: extractBarChart(cards.sessionTypes),
+    outcomes: mapOutcomes(extractBarChart(cards.outcomes)),
+    friction: mapFriction(extractBarChart(cards.friction)),
+    satisfaction: mapSatisfaction(extractBarChart(cards.satisfaction)),
+    multiClauding: parseMultiClauding(cards.multiClauding),
+    responseTime: parseResponseTime(cards.responseTime),
+    toolErrors: extractBarChart(cards.toolErrors),
     totalSessions: subtitle.sessions,
     totalToolCalls,
   };

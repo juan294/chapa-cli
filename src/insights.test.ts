@@ -212,6 +212,31 @@ describe("parseInsightsHtml", () => {
     });
   });
 
+  it("uses the first matching chart card for prefixed titles", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Top Tools Used</div>
+        <div class="bar-row">
+          <span class="bar-label">Read</span>
+          <span class="bar-value">5</span>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Top Tools Used (secondary)</div>
+        <div class="bar-row">
+          <span class="bar-label">Read</span>
+          <span class="bar-value">99</span>
+        </div>
+      </div>
+    </body></html>`;
+
+    const result = parseInsightsHtml(html);
+
+    expect(result.toolUsage).toEqual({ Read: 5 });
+    expect(result.totalToolCalls).toBe(5);
+  });
+
   it("returns all 14 top-level fields", () => {
     const result = parseInsightsHtml(FIXTURE_HTML);
     const keys = Object.keys(result);
