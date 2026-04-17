@@ -65,6 +65,8 @@ describe("sendTelemetry", () => {
   function makePayload(overrides: Partial<TelemetryPayload> = {}): TelemetryPayload {
     return {
       operationId: "test-op-123",
+      command: "merge",
+      stage: "complete",
       targetHandle: "juan294",
       sourceHandle: "corp_user",
       success: true,
@@ -76,9 +78,9 @@ describe("sendTelemetry", () => {
         reviewsSubmittedCount: 3,
       },
       timing: {
+        totalMs: 1163,
         fetchMs: 823,
         uploadMs: 340,
-        totalMs: 1163,
       },
       cliVersion: "0.2.9",
       ...overrides,
@@ -100,9 +102,38 @@ describe("sendTelemetry", () => {
     );
 
     const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+    expect(body.command).toBe("merge");
+    expect(body.stage).toBe("complete");
     expect(body.operationId).toBe("test-op-123");
     expect(body.targetHandle).toBe("juan294");
     expect(body.success).toBe(true);
+  });
+
+  it("supports login telemetry without merge handles", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
+
+    await sendTelemetry(
+      "https://chapa.example.com",
+      makePayload({
+        command: "login",
+        stage: "auth",
+        targetHandle: undefined,
+        sourceHandle: undefined,
+        success: false,
+        errorCategory: "network",
+        timing: {
+          totalMs: 9000,
+          authMs: 9000,
+        },
+      }),
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+    expect(body.command).toBe("login");
+    expect(body.stage).toBe("auth");
+    expect(body.targetHandle).toBeUndefined();
+    expect(body.sourceHandle).toBeUndefined();
+    expect(body.timing.authMs).toBe(9000);
   });
 
   it("includes AbortSignal with 5s timeout", async () => {

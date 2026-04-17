@@ -12,6 +12,13 @@ const mockCreateLogger = vi.hoisted(() => vi.fn());
 const mockFormatStatsSummary = vi.hoisted(() => vi.fn());
 const mockSendTelemetry = vi.hoisted(() => vi.fn());
 const mockClassifyError = vi.hoisted(() => vi.fn());
+const mockEmptyTelemetryStats = vi.hoisted(() => ({
+  commitsTotal: 0,
+  reposContributed: 0,
+  prsMergedCount: 0,
+  activeDays: 0,
+  reviewsSubmittedCount: 0,
+}));
 const mockParseInsightsHtml = vi.hoisted(() => vi.fn());
 const mockUploadInsights = vi.hoisted(() => vi.fn());
 const mockTriggerRecalculate = vi.hoisted(() => vi.fn());
@@ -47,6 +54,7 @@ vi.mock("./shared.js", () => ({ formatStatsSummary: mockFormatStatsSummary }));
 vi.mock("./telemetry.js", () => ({
   sendTelemetry: mockSendTelemetry,
   classifyError: mockClassifyError,
+  EMPTY_TELEMETRY_STATS: mockEmptyTelemetryStats,
 }));
 vi.mock("node:fs", async () => {
   const actual = await import("node:fs");
@@ -360,6 +368,23 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("sends success telemetry on successful login", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      "https://chapa.thecreativetoken.com",
+      expect.objectContaining({
+        command: "login",
+        stage: "complete",
+        success: true,
+        errorCategory: undefined,
+        timing: expect.objectContaining({ authMs: expect.any(Number), totalMs: expect.any(Number) }),
+      }),
+    );
+  });
+
   it("rejects non-HTTPS login servers outside localhost", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({
       command: "login",
@@ -391,6 +416,25 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("sends failure telemetry when login rejects", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+    mockLogin.mockRejectedValue(new Error("Timed out waiting for approval. Please try again."));
+    mockClassifyError.mockReturnValue("network");
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      "https://chapa.thecreativetoken.com",
+      expect.objectContaining({
+        command: "login",
+        stage: "auth",
+        success: false,
+        errorCategory: "network",
+        timing: expect.objectContaining({ authMs: expect.any(Number), totalMs: expect.any(Number) }),
+      }),
+    );
   });
 
   // ── logout command ───────────────────────────────────────────────────
@@ -575,6 +619,8 @@ describe("index.ts command dispatch", () => {
     expect(mockSendTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
+        command: "merge",
+        stage: "fetch",
         success: false,
         errorCategory: "network",
         targetHandle: "juan294",
@@ -646,6 +692,8 @@ describe("index.ts command dispatch", () => {
     expect(mockSendTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
+        command: "merge",
+        stage: "upload",
         success: false,
         errorCategory: "auth",
         targetHandle: "juan294",
@@ -770,6 +818,8 @@ describe("index.ts command dispatch", () => {
     expect(mockSendTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
+        command: "merge",
+        stage: "complete",
         success: true,
         targetHandle: "juan294",
         sourceHandle: "corp_user",
@@ -1083,6 +1133,32 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("Could not extract session data");
   });
 
+  it("sends failure telemetry when parsing insights HTML fails", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "bad.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockParseInsightsHtml.mockImplementation(() => {
+      throw new Error("Malformed insights HTML");
+    });
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        targetHandle: "user",
+        sourceHandle: "user",
+        timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: 0, totalMs: expect.any(Number) }),
+      }),
+    );
+  });
+
   // ── insights: upload failure ──────────────────────────────────────────
 
   it("exits 1 when upload returns failure", async () => {
@@ -1100,6 +1176,33 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Server returned 401");
+  });
+
+  it("sends failure telemetry when insights upload fails", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: false,
+      error: "Server returned 401: Invalid token",
+    });
+    mockClassifyError.mockReturnValue("auth");
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "upload",
+        success: false,
+        errorCategory: "auth",
+        targetHandle: "user",
+        sourceHandle: "user",
+        timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
+      }),
+    );
   });
 
   // ── insights: happy path ──────────────────────────────────────────────
@@ -1190,9 +1293,12 @@ describe("index.ts command dispatch", () => {
     expect(mockSendTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
+        command: "insights",
+        stage: "complete",
         success: true,
         targetHandle: "user",
         sourceHandle: "user",
+        timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
     );
   });
