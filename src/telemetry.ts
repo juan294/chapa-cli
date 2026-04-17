@@ -1,29 +1,47 @@
 import { stripTrailingSlashes } from "./shared.js";
 import { requestJson } from "./http.js";
 
+export type TelemetryCommand = "login" | "merge" | "insights";
+export type TelemetryStage = "auth" | "fetch" | "parse" | "upload" | "complete";
+export type TelemetryErrorCategory = "auth" | "network" | "graphql" | "server" | "unknown";
+
+export interface TelemetryStats {
+  commitsTotal: number;
+  reposContributed: number;
+  prsMergedCount: number;
+  activeDays: number;
+  reviewsSubmittedCount: number;
+}
+
 export interface TelemetryPayload {
   operationId: string;
-  targetHandle: string;
-  sourceHandle: string;
+  command: TelemetryCommand;
+  stage: TelemetryStage;
+  targetHandle?: string;
+  sourceHandle?: string;
   success: boolean;
-  errorCategory?: "auth" | "network" | "graphql" | "server" | "unknown";
-  stats: {
-    commitsTotal: number;
-    reposContributed: number;
-    prsMergedCount: number;
-    activeDays: number;
-    reviewsSubmittedCount: number;
-  };
+  errorCategory?: TelemetryErrorCategory;
+  stats: TelemetryStats;
   timing: {
-    fetchMs: number;
-    uploadMs: number;
     totalMs: number;
+    authMs?: number;
+    fetchMs?: number;
+    parseMs?: number;
+    uploadMs?: number;
   };
   cliVersion: string;
 }
 
+export const EMPTY_TELEMETRY_STATS: TelemetryStats = {
+  commitsTotal: 0,
+  reposContributed: 0,
+  prsMergedCount: 0,
+  activeDays: 0,
+  reviewsSubmittedCount: 0,
+};
+
 /** Classify an error message into a category for dashboarding. */
-export function classifyError(message: string): TelemetryPayload["errorCategory"] {
+export function classifyError(message: string): TelemetryErrorCategory {
   if (/\b40[13]\b/.test(message)) return "auth";
   if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|DNS|timed out/i.test(message)) return "network";
   if (/graphql/i.test(message)) return "graphql";

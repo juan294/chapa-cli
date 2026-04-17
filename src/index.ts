@@ -9,7 +9,7 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
-import { sendTelemetry, classifyError } from "./telemetry.js";
+import { sendTelemetry, classifyError, EMPTY_TELEMETRY_STATS } from "./telemetry.js";
 import type { TelemetryPayload } from "./telemetry.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -158,13 +158,32 @@ function detachBackgroundTask(task: () => void | Promise<void>): void {
 // ── Command Handlers ──────────────────────────────────────────────────────
 
 async function handleLogin(args: CliArgs): Promise<void> {
+  const operationId = randomUUID();
+  const startedAt = Date.now();
+  let succeeded = false;
+  let caught: unknown;
+
   try {
     await login(args.server, { verbose: args.verbose, insecure: args.insecure });
+    succeeded = true;
   } catch (err) {
+    caught = err;
     if (err instanceof Error) {
       throw new CliError(err.message);
     }
     throw err;
+  } finally {
+    const totalMs = round(Date.now() - startedAt);
+    emitTelemetry(args.server, {
+      operationId,
+      command: "login",
+      stage: succeeded ? "complete" : "auth",
+      success: succeeded,
+      errorCategory: succeeded ? undefined : classifyError(errorMessage(caught)),
+      stats: EMPTY_TELEMETRY_STATS,
+      timing: { totalMs, authMs: totalMs },
+      cliVersion: VERSION,
+    });
   }
 }
 
@@ -195,7 +214,16 @@ async function handleInsights(
   const handle = args.handle ?? config?.handle;
   const authToken = args.token ?? config?.token;
   const serverUrl = resolveServerUrl(args, config?.server);
+  const operationId = randomUUID();
   assertTrustedServerOrThrow(log, serverUrl);
+  let parseMs = 0;
+  let uploadMs = 0;
+  let totalMs = 0;
+  let telemetryStage: TelemetryPayload["stage"] = "parse";
+  let telemetryErrorCategory: TelemetryPayload["errorCategory"] | undefined;
+  let insightsSucceeded = false;
+  let data: InsightsUpload | undefined;
+  let caught: unknown;
 
   if (!args.file) {
     log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
@@ -226,96 +254,116 @@ async function handleInsights(
     throw new CliError("File read error");
   }
 
-  log.info("Parsing insights report...");
-  log.time("parse");
-  let data: InsightsUpload;
   try {
-    data = insightsModule.parseInsightsHtml(html);
-  } catch (err) {
-    log.error(`Error parsing insights HTML: ${(err as Error).message}`);
-    throw new CliError("Insights parse error");
-  }
-  const parseMs = log.timeEnd("parse");
+    log.info("Parsing insights report...");
+    log.time("parse");
+    try {
+      data = insightsModule.parseInsightsHtml(html);
+    } catch (err) {
+      parseMs = log.timeEnd("parse");
+      log.error(`Error parsing insights HTML: ${(err as Error).message}`);
+      throw new CliError("Insights parse error");
+    }
+    parseMs = log.timeEnd("parse");
 
-  // Validate minimal viability
-  if (data.totalSessions < 1) {
-    log.error("Error: Could not extract session data from HTML. Is this a valid Claude Code insights report?");
-    throw new CliError("Invalid insights data");
-  }
+    // Validate minimal viability
+    if (data.totalSessions < 1) {
+      log.error("Error: Could not extract session data from HTML. Is this a valid Claude Code insights report?");
+      throw new CliError("Invalid insights data");
+    }
 
-  log.debug(`Parsed: ${data.totalSessions} sessions, ${data.volume.messages} messages, ${data.totalToolCalls} tool calls`);
-  log.debug(`Period: ${data.reportPeriod.start} to ${data.reportPeriod.end}`);
+    log.debug(`Parsed: ${data.totalSessions} sessions, ${data.volume.messages} messages, ${data.totalToolCalls} tool calls`);
+    log.debug(`Period: ${data.reportPeriod.start} to ${data.reportPeriod.end}`);
 
-  log.info(`Uploading insights to ${serverUrl}...`);
-  log.time("upload");
-  const result = await insightsModule.uploadInsights({
-    data,
-    token: authToken,
-    serverUrl,
-    logger: log,
-  });
-  const uploadMs = log.timeEnd("upload");
+    log.info(`Uploading insights to ${serverUrl}...`);
+    telemetryStage = "upload";
+    log.time("upload");
+    const result = await insightsModule.uploadInsights({
+      data,
+      token: authToken,
+      serverUrl,
+      logger: log,
+    });
+    uploadMs = log.timeEnd("upload");
 
-  // Trigger recalculate (non-blocking, fire-and-forget)
-  if (result.success) {
-    detachBackgroundTask(() => insightsModule.triggerRecalculate(serverUrl, authToken, log));
-  }
+    // Trigger recalculate (non-blocking, fire-and-forget)
+    if (result.success) {
+      detachBackgroundTask(() => insightsModule.triggerRecalculate(serverUrl, authToken, log));
+    }
 
-  const totalMs = log.timeEnd("total");
+    totalMs = log.timeEnd("total");
 
-  if (!result.success) {
+    if (!result.success) {
+      telemetryErrorCategory = classifyError(result.error ?? "unknown");
+      if (args.json) {
+        process.stdout.write(JSON.stringify({
+          success: false,
+          handle,
+          file: filePath,
+          error: result.error,
+          timing: { parseMs: round(parseMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+          cliVersion: VERSION,
+        }, null, 2) + "\n");
+      } else {
+        log.error(`Error: ${result.error}`);
+      }
+      throw new CliError(result.error ?? "Upload failed");
+    }
+
+    insightsSucceeded = true;
+    telemetryStage = "complete";
+
     if (args.json) {
       process.stdout.write(JSON.stringify({
-        success: false,
+        success: true,
         handle,
         file: filePath,
-        error: result.error,
+        craftScore: result.craftScore,
         timing: { parseMs: round(parseMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
         cliVersion: VERSION,
       }, null, 2) + "\n");
     } else {
-      log.error(`Error: ${result.error}`);
+      const cs = result.craftScore;
+      if (cs) {
+        log.info(`Craft Score: ${cs.craftScore}/100 (${cs.tier})`);
+        log.info(`  Proficiency:    ${cs.dimensions.proficiency}`);
+        log.info(`  Effectiveness:  ${cs.dimensions.effectiveness}`);
+        log.info(`  Sophistication: ${cs.dimensions.sophistication}`);
+        log.info(`Period: ${cs.reportPeriod.start} to ${cs.reportPeriod.end}`);
+      }
+      log.info(`Success! Insights uploaded for ${handle} (${(totalMs / 1000).toFixed(1)}s)`);
     }
-    throw new CliError(result.error ?? "Upload failed");
-  }
-
-  if (args.json) {
-    process.stdout.write(JSON.stringify({
-      success: true,
-      handle,
-      file: filePath,
-      craftScore: result.craftScore,
-      timing: { parseMs: round(parseMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+  } catch (err) {
+    caught = err;
+    if (!telemetryErrorCategory) {
+      telemetryErrorCategory = classifyError(errorMessage(err));
+    }
+    totalMs = totalMs || log.timeEnd("total");
+  } finally {
+    emitTelemetry(serverUrl, {
+      operationId,
+      command: "insights",
+      stage: telemetryStage,
+      targetHandle: handle,
+      sourceHandle: handle,
+      success: insightsSucceeded,
+      errorCategory: insightsSucceeded ? undefined : telemetryErrorCategory,
+      stats: {
+        ...EMPTY_TELEMETRY_STATS,
+        activeDays: data?.volume.days ?? 0,
+      },
+      timing: {
+        totalMs: round(totalMs || log.timeEnd("total")),
+        parseMs: round(parseMs),
+        uploadMs: round(uploadMs),
+      },
       cliVersion: VERSION,
-    }, null, 2) + "\n");
-  } else {
-    const cs = result.craftScore;
-    if (cs) {
-      log.info(`Craft Score: ${cs.craftScore}/100 (${cs.tier})`);
-      log.info(`  Proficiency:    ${cs.dimensions.proficiency}`);
-      log.info(`  Effectiveness:  ${cs.dimensions.effectiveness}`);
-      log.info(`  Sophistication: ${cs.dimensions.sophistication}`);
-      log.info(`Period: ${cs.reportPeriod.start} to ${cs.reportPeriod.end}`);
-    }
-    log.info(`Success! Insights uploaded for ${handle} (${(totalMs / 1000).toFixed(1)}s)`);
+    });
   }
 
-  // Telemetry (non-blocking, fire-and-forget)
-  detachBackgroundTask(() => sendTelemetry(serverUrl, {
-    operationId: randomUUID(),
-    targetHandle: handle,
-    sourceHandle: handle,
-    success: true,
-    stats: {
-      commitsTotal: 0,
-      reposContributed: 0,
-      prsMergedCount: 0,
-      activeDays: data.volume.days,
-      reviewsSubmittedCount: 0,
-    },
-    timing: { fetchMs: 0, uploadMs: round(uploadMs), totalMs: round(totalMs) },
-    cliVersion: VERSION,
-  }));
+  if (caught) {
+    throw caught;
+  }
 }
 
 async function handleMerge(args: CliArgs): Promise<void> {
@@ -334,7 +382,8 @@ async function handleMerge(args: CliArgs): Promise<void> {
   let fetchMs = 0;
   let uploadMs = 0;
   let totalMs = 0;
-  let telemetryStats = emptyMergeStats();
+  let telemetryStage: TelemetryPayload["stage"] = "fetch";
+  let telemetryStats = { ...EMPTY_TELEMETRY_STATS };
   let telemetryErrorCategory: TelemetryPayload["errorCategory"] | undefined;
   let shouldSendTelemetry = false;
   let mergeSucceeded = false;
@@ -393,6 +442,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
     log.info(formatStatsSummary(emuStats));
 
     log.info(`Uploading supplemental stats to ${serverUrl}...`);
+    telemetryStage = "upload";
     log.time("upload");
     const result = await uploadSupplementalStats({
       targetHandle: handle,
@@ -427,6 +477,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
 
     totalMs = log.timeEnd("total");
     mergeSucceeded = true;
+    telemetryStage = "complete";
     shouldSendTelemetry = true;
 
     if (args.json) {
@@ -461,8 +512,10 @@ async function handleMerge(args: CliArgs): Promise<void> {
     }
   } finally {
     if (shouldSendTelemetry) {
-      detachBackgroundTask(() => sendTelemetry(serverUrl, {
+      emitTelemetry(serverUrl, {
         operationId,
+        command: "merge",
+        stage: telemetryStage,
         targetHandle: handle,
         sourceHandle: emuHandle,
         success: mergeSucceeded,
@@ -474,23 +527,13 @@ async function handleMerge(args: CliArgs): Promise<void> {
           totalMs: round(totalMs || log.timeEnd("total")),
         },
         cliVersion: VERSION,
-      }));
+      });
     }
   }
 
   if (caught) {
     throw caught;
   }
-}
-
-function emptyMergeStats() {
-  return {
-    commitsTotal: 0,
-    reposContributed: 0,
-    prsMergedCount: 0,
-    activeDays: 0,
-    reviewsSubmittedCount: 0,
-  };
 }
 
 function mergeTelemetryStats(stats: {
@@ -507,6 +550,10 @@ function mergeTelemetryStats(stats: {
     activeDays: stats.activeDays,
     reviewsSubmittedCount: stats.reviewsSubmittedCount,
   };
+}
+
+function emitTelemetry(serverUrl: string, payload: TelemetryPayload): void {
+  detachBackgroundTask(() => sendTelemetry(serverUrl, payload));
 }
 
 // ── Main Dispatcher ───────────────────────────────────────────────────────
