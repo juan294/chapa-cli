@@ -9,7 +9,7 @@ import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
 import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
-import { sendTelemetry, classifyError, EMPTY_TELEMETRY_STATS } from "./telemetry.js";
+import { queueTelemetry, classifyError, EMPTY_TELEMETRY_STATS } from "./telemetry.js";
 import type { TelemetryPayload } from "./telemetry.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -144,17 +144,6 @@ function warnIfUsingSavedServer(
   );
 }
 
-function detachBackgroundTask(task: () => void | Promise<void>): void {
-  const timer = setTimeout(() => {
-    try {
-      void Promise.resolve(task()).catch(() => {});
-    } catch {
-      // Background work must never affect the command exit path.
-    }
-  }, 0);
-  timer.unref();
-}
-
 // ── Command Handlers ──────────────────────────────────────────────────────
 
 async function handleLogin(args: CliArgs): Promise<void> {
@@ -204,7 +193,7 @@ function handleLogout(): void {
 
 async function handleInsights(
   args: CliArgs,
-  insightsModule: Pick<InsightsModule, "parseInsightsHtml" | "uploadInsights" | "triggerRecalculate">,
+  insightsModule: Pick<InsightsModule, "parseInsightsHtml" | "queueRecalculate" | "uploadInsights">,
 ): Promise<void> {
   const log = createLogger({ verbose: args.verbose, json: args.json });
   log.time("total");
@@ -286,10 +275,10 @@ async function handleInsights(
     });
     uploadMs = log.timeEnd("upload");
 
-    // Trigger recalculate (non-blocking, fire-and-forget)
-    if (result.success) {
-      detachBackgroundTask(() => insightsModule.triggerRecalculate(serverUrl, authToken, log));
-    }
+  // Trigger recalculate (non-blocking, fire-and-forget)
+  if (result.success) {
+    insightsModule.queueRecalculate(serverUrl, authToken);
+  }
 
     totalMs = log.timeEnd("total");
 
@@ -553,7 +542,7 @@ function mergeTelemetryStats(stats: {
 }
 
 function emitTelemetry(serverUrl: string, payload: TelemetryPayload): void {
-  detachBackgroundTask(() => sendTelemetry(serverUrl, payload));
+  queueTelemetry(serverUrl, payload);
 }
 
 // ── Main Dispatcher ───────────────────────────────────────────────────────

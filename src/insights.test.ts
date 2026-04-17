@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseInsightsHtml,
+  queueRecalculate,
   uploadInsights,
   triggerRecalculate,
   _parseNumeric,
@@ -10,6 +11,13 @@ import {
   _parseLinesStat,
 } from "./insights.js";
 import type { InsightsUpload } from "./shared.js";
+
+const mockUnref = vi.hoisted(() => vi.fn());
+const mockSpawn = vi.hoisted(() => vi.fn(() => ({ unref: mockUnref })));
+
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+}));
 
 const FIXTURE_HTML = readFileSync(
   join(import.meta.dirname, "__fixtures__", "claude-code-report.html"),
@@ -409,5 +417,31 @@ describe("triggerRecalculate", () => {
   it("does not throw on non-ok response", async () => {
     mockFetch.mockResolvedValue(jsonResponse({ error: "nope" }, 500));
     await expect(triggerRecalculate("https://x.com", "t")).resolves.toBeUndefined();
+  });
+});
+
+describe("queueRecalculate", () => {
+  beforeEach(() => {
+    mockSpawn.mockClear();
+    mockUnref.mockClear();
+  });
+
+  it("spawns a detached recalculate request and unreferences it", () => {
+    queueRecalculate("https://chapa.example.com/", "token");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["--input-type=module", "--eval", expect.any(String)]),
+      expect.objectContaining({
+        detached: true,
+        stdio: "ignore",
+        env: expect.objectContaining({
+          CHAPA_BG_TIMEOUT_MS: "30000",
+          CHAPA_BG_TOKEN: "token",
+          CHAPA_BG_URL: "https://chapa.example.com/api/recalculate",
+        }),
+      }),
+    );
+    expect(mockUnref).toHaveBeenCalledTimes(1);
   });
 });
