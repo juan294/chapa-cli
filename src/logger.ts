@@ -24,7 +24,7 @@ export function createLogger(opts: LoggerOptions): Logger {
     },
 
     debug(msg: string): void {
-      if (!opts.verbose || opts.json) return;
+      if (!opts.verbose) return;
       process.stderr.write(msg + "\n");
     },
 
@@ -47,7 +47,7 @@ export function createLogger(opts: LoggerOptions): Logger {
       timers.delete(label);
       completed.set(label, elapsed);
 
-      if (opts.verbose && !opts.json) {
+      if (opts.verbose) {
         process.stderr.write(`${label}: ${elapsed.toFixed(1)}ms\n`);
       }
 

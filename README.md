@@ -48,6 +48,9 @@ chapa login --insecure                       # corporate TLS interception
 chapa login --verbose                        # debug polling
 ```
 
+When you log in to a non-default server, that server is saved in `~/.chapa/credentials.json`.
+Later `merge` and `insights` commands will reuse it until you pass `--server` explicitly.
+
 ### `chapa logout`
 
 Clear stored credentials from `~/.chapa/credentials.json`.
@@ -63,7 +66,8 @@ Upload a Claude Code insights HTML report to your Chapa badge.
 ```bash
 chapa insights --file ~/Downloads/claude-code-insights.html
 chapa insights --file report.html --json     # structured output
-chapa insights --file report.html --verbose  # debug output
+chapa insights --file report.html --verbose  # debug output on stderr
+chapa insights --file report.html --json --verbose
 ```
 
 ### `chapa merge`
@@ -75,6 +79,12 @@ chapa merge --emu-handle your-emu-handle
 ```
 
 The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` environment variable.
+
+If you previously logged in against a custom server, `merge` will keep using that saved server until you override it:
+
+```bash
+chapa merge --emu-handle your-emu-handle --server https://chapa.thecreativetoken.com
+```
 
 **Required token scopes:** `repo`, `read:user`, `read:org`, `read:discussion`
 
@@ -91,9 +101,9 @@ See [EMU token setup](#emu-token-setup) for step-by-step instructions.
 | `--handle <handle>` | Override personal handle (auto-detected from login) |
 | `--token <token>` | Override auth token (auto-detected from login) |
 | `--file <path>` | Path to Claude Code insights HTML file (required for insights) |
-| `--server <url>` | Chapa server URL (default: production) |
-| `--verbose` | Show debug output, timings, and server responses |
-| `--json` | Output merge result as structured JSON (for scripting/CI) |
+| `--server <url>` | Chapa server URL. HTTPS is required except for local loopback URLs such as `http://localhost:3001`. |
+| `--verbose` | Show debug output, timings, and server responses on stderr |
+| `--json` | Output structured results on stdout. Can be combined with `--verbose`. |
 | `--insecure` | Skip TLS certificate verification |
 | `--version`, `-v` | Show version number |
 | `--help`, `-h` | Show help message |
@@ -114,6 +124,8 @@ chapa merge --emu-handle your-emu --insecure
 ```
 
 This disables TLS certificate verification for the CLI session only.
+
+`--insecure` does **not** allow plain HTTP servers. For token-bearing requests, the CLI requires HTTPS unless the server is a local loopback URL such as `http://localhost`.
 
 ## EMU token setup
 

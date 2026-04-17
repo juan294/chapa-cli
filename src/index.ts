@@ -6,6 +6,7 @@ import { uploadSupplementalStats } from "./upload.js";
 import { loadConfig, deleteConfig } from "./config.js";
 import { login } from "./login.js";
 import { createLogger } from "./logger.js";
+import type { Logger } from "./logger.js";
 import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
 import { sendTelemetry, classifyError } from "./telemetry.js";
@@ -43,8 +44,8 @@ Options:
 `;
 
 /** Use explicit --server if set, otherwise fall back to saved config, otherwise default. */
-function resolveServerUrl(cliServer: string, configServer?: string): string {
-  return cliServer !== DEFAULT_SERVER ? cliServer : (configServer ?? cliServer);
+function resolveServerUrl(args: Pick<CliArgs, "server" | "serverExplicit">, configServer?: string): string {
+  return args.serverExplicit ? args.server : (configServer ?? args.server);
 }
 
 /** Sentinel error for known CLI error exits (validation failures, expected errors). */
@@ -61,6 +62,99 @@ function loadInsightsModule(): Promise<InsightsModule> {
   return import("./insights.js");
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function loadSavedConfig(): ReturnType<typeof loadConfig> {
+  try {
+    return loadConfig();
+  } catch (err) {
+    throw new CliError(errorMessage(err));
+  }
+}
+
+function loadSavedConfigOrThrow(log: Pick<Logger, "error">): ReturnType<typeof loadConfig> {
+  try {
+    return loadSavedConfig();
+  } catch (err) {
+    const message = errorMessage(err);
+    log.error(`Error: ${message}`);
+    throw err;
+  }
+}
+
+function deleteSavedConfig(): boolean {
+  try {
+    return deleteConfig();
+  } catch (err) {
+    throw new CliError(errorMessage(err));
+  }
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function assertTrustedServer(serverUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(serverUrl);
+  } catch {
+    throw new CliError(`Invalid server URL: ${serverUrl}`);
+  }
+
+  if (parsed.protocol === "https:") {
+    return;
+  }
+
+  if (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname)) {
+    return;
+  }
+
+  throw new CliError(
+    `Refusing to send credentials or stats to insecure server ${serverUrl}. Use HTTPS, or http://localhost only for local development.`,
+  );
+}
+
+function assertTrustedServerOrThrow(
+  log: Pick<Logger, "error">,
+  serverUrl: string,
+): void {
+  try {
+    assertTrustedServer(serverUrl);
+  } catch (err) {
+    const message = errorMessage(err);
+    log.error(`Error: ${message}`);
+    throw err;
+  }
+}
+
+function warnIfUsingSavedServer(
+  log: Pick<Logger, "warn">,
+  args: Pick<CliArgs, "serverExplicit">,
+  configServer?: string,
+): void {
+  if (args.serverExplicit || !configServer || configServer === DEFAULT_SERVER) {
+    return;
+  }
+
+  log.warn(
+    `Using saved server ${configServer} from ~/.chapa/credentials.json. Pass --server ${DEFAULT_SERVER} to use production.`,
+  );
+}
+
+function detachBackgroundTask(task: () => void | Promise<void>): void {
+  const timer = setTimeout(() => {
+    try {
+      void Promise.resolve(task()).catch(() => {});
+    } catch {
+      // Background work must never affect the command exit path.
+    }
+  }, 0);
+  timer.unref();
+}
+
 // ── Command Handlers ──────────────────────────────────────────────────────
 
 async function handleLogin(args: CliArgs): Promise<void> {
@@ -75,7 +169,13 @@ async function handleLogin(args: CliArgs): Promise<void> {
 }
 
 function handleLogout(): void {
-  const removed = deleteConfig();
+  let removed: boolean;
+  try {
+    removed = deleteSavedConfig();
+  } catch (err) {
+    console.error(`Error: ${errorMessage(err)}`);
+    throw err;
+  }
   if (removed) {
     console.log("Logged out. Credentials removed from ~/.chapa/credentials.json");
   } else {
@@ -90,10 +190,12 @@ async function handleInsights(
   const log = createLogger({ verbose: args.verbose, json: args.json });
   log.time("total");
 
-  const config = loadConfig();
+  const config = loadSavedConfigOrThrow(log);
+  warnIfUsingSavedServer(log, args, config?.server);
   const handle = args.handle ?? config?.handle;
   const authToken = args.token ?? config?.token;
-  const serverUrl = resolveServerUrl(args.server, config?.server);
+  const serverUrl = resolveServerUrl(args, config?.server);
+  assertTrustedServerOrThrow(log, serverUrl);
 
   if (!args.file) {
     log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
@@ -156,7 +258,7 @@ async function handleInsights(
 
   // Trigger recalculate (non-blocking, fire-and-forget)
   if (result.success) {
-    insightsModule.triggerRecalculate(serverUrl, authToken, log);
+    detachBackgroundTask(() => insightsModule.triggerRecalculate(serverUrl, authToken, log));
   }
 
   const totalMs = log.timeEnd("total");
@@ -199,7 +301,7 @@ async function handleInsights(
   }
 
   // Telemetry (non-blocking, fire-and-forget)
-  sendTelemetry(serverUrl, {
+  detachBackgroundTask(() => sendTelemetry(serverUrl, {
     operationId: randomUUID(),
     targetHandle: handle,
     sourceHandle: handle,
@@ -213,7 +315,7 @@ async function handleInsights(
     },
     timing: { fetchMs: 0, uploadMs: round(uploadMs), totalMs: round(totalMs) },
     cliVersion: VERSION,
-  });
+  }));
 }
 
 async function handleMerge(args: CliArgs): Promise<void> {
@@ -221,11 +323,13 @@ async function handleMerge(args: CliArgs): Promise<void> {
   log.time("total");
 
   // Load saved config for handle and token fallback
-  const config = loadConfig();
+  const config = loadSavedConfigOrThrow(log);
+  warnIfUsingSavedServer(log, args, config?.server);
 
   const handle = args.handle ?? config?.handle;
   const emuHandle = args.emuHandle;
-  const serverUrl = resolveServerUrl(args.server, config?.server);
+  const serverUrl = resolveServerUrl(args, config?.server);
+  assertTrustedServerOrThrow(log, serverUrl);
   const operationId = randomUUID();
   let fetchMs = 0;
   let uploadMs = 0;
@@ -357,7 +461,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
     }
   } finally {
     if (shouldSendTelemetry) {
-      sendTelemetry(serverUrl, {
+      detachBackgroundTask(() => sendTelemetry(serverUrl, {
         operationId,
         targetHandle: handle,
         sourceHandle: emuHandle,
@@ -370,7 +474,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
           totalMs: round(totalMs || log.timeEnd("total")),
         },
         cliVersion: VERSION,
-      });
+      }));
     }
   }
 
@@ -420,10 +524,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --json and --verbose are mutually exclusive
-  if (args.json && args.verbose) {
-    console.error("Error: --json and --verbose cannot be used together.");
-    throw new CliError("--json and --verbose cannot be used together");
+  if (args.unknownCommand) {
+    console.error(`Error: Unknown command '${args.unknownCommand}'.`);
+    console.error("Usage: chapa <login | logout | merge | insights> [options]");
+    console.error("\nRun 'chapa --help' for more information.");
+    throw new CliError(`Unknown command '${args.unknownCommand}'`);
   }
 
   // Global TLS bypass for corporate networks — applies to all commands
@@ -434,6 +539,12 @@ async function main(): Promise<void> {
   }
 
   if (args.command === "login") {
+    try {
+      assertTrustedServer(args.server);
+    } catch (err) {
+      console.error(`Error: ${errorMessage(err)}`);
+      throw err;
+    }
     await handleLogin(args);
     return;
   }
@@ -469,7 +580,7 @@ main().catch((err: unknown) => {
   // CliError messages are already printed by the handlers above;
   // only print for unexpected errors.
   if (!(err instanceof CliError)) {
-    console.error(err instanceof Error ? err.message : String(err));
+    console.error(errorMessage(err));
   }
   process.exit(1);
 });
