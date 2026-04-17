@@ -221,6 +221,30 @@ describe("login", () => {
     errorSpy.mockRestore();
   });
 
+  it("retries when a poll request times out", async () => {
+    let callCount = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        const timeoutError = new Error("The operation was aborted due to timeout");
+        timeoutError.name = "TimeoutError";
+        throw timeoutError;
+      }
+      return new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      );
+    });
+
+    const p = login("https://example.com", loginOpts());
+    await advancePoll();
+    await advancePoll();
+    await p;
+
+    expect(callCount).toBe(2);
+    expect(mockSaveConfig).toHaveBeenCalledOnce();
+  });
+
   it("does not set or restore NODE_TLS_REJECT_UNAUTHORIZED (handled by index.ts)", async () => {
     // TLS bypass is now global in index.ts, not in login().
     // Verify login() does NOT touch the env var.
@@ -507,25 +531,19 @@ describe("login", () => {
     }
   });
 
-  it("exits with code 1 on expired session", { timeout: 10000 }, async () => {
+  it("rejects with an expired-session error", { timeout: 10000 }, async () => {
     vi.useRealTimers(); // Use real timers for this test -- fast enough with 2s sleep
-
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("process.exit");
-    }) as never);
 
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ status: "expired" }), { status: 200 }),
     );
 
-    await expect(login("https://example.com", loginOpts())).rejects.toThrow("process.exit");
-    expect(mockExit).toHaveBeenCalledWith(1);
-
-    mockExit.mockRestore();
+    await expect(login("https://example.com", loginOpts())).rejects.toThrow(
+      "Session expired. Please try again.",
+    );
   });
 
-  it("times out after MAX_POLL_ATTEMPTS with persistent pending status", async () => {
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+  it("rejects with a timeout error after MAX_POLL_ATTEMPTS", async () => {
     const errorSpy = vi.spyOn(console, "error");
 
     // Always return pending
@@ -536,15 +554,14 @@ describe("login", () => {
     const noopWait = () => Promise.resolve();
     const noopOpen = () => {};
     const p = login("https://example.com", { _waitForEnter: noopWait, _openBrowser: noopOpen });
+    const rejection = expect(p).rejects.toThrow("Timed out waiting for approval. Please try again.");
     // Advance fake timers through all 150 poll iterations
     for (let i = 0; i < 150; i++) await advancePoll();
-    await p;
+    await rejection;
 
-    expect(mockExit).toHaveBeenCalledWith(1);
     const allErrors = errorSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allErrors).toContain("Timed out");
 
-    mockExit.mockRestore();
     errorSpy.mockRestore();
   });
 

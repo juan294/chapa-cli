@@ -237,15 +237,21 @@ function makeInsightsData(): InsightsUpload {
   return parseInsightsHtml(FIXTURE_HTML);
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("uploadInsights", () => {
   const mockFetch = vi.fn();
   beforeEach(() => { vi.stubGlobal("fetch", mockFetch); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("sends POST with Bearer auth and JSON body", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    mockFetch.mockResolvedValue(
+      jsonResponse({
         success: true,
         craftScore: {
           craftScore: 72,
@@ -254,7 +260,7 @@ describe("uploadInsights", () => {
           reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
         },
       }),
-    });
+    );
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "test-token",
@@ -276,10 +282,7 @@ describe("uploadInsights", () => {
   });
 
   it("strips trailing slash from server URL", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ success: true, craftScore: {} }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ success: true, craftScore: {} }));
     await uploadInsights({
       data: makeInsightsData(),
       token: "t",
@@ -292,11 +295,7 @@ describe("uploadInsights", () => {
   });
 
   it("returns error on HTTP 401", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: "Authentication required" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Authentication required" }, 401));
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "bad",
@@ -308,11 +307,9 @@ describe("uploadInsights", () => {
   });
 
   it("returns error on HTTP 400 with validation reason", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: "Invalid insights data", reason: "totalSessions must be >= 1" }),
-    });
+    mockFetch.mockResolvedValue(
+      jsonResponse({ error: "Invalid insights data", reason: "totalSessions must be >= 1" }, 400),
+    );
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "t",
@@ -334,11 +331,7 @@ describe("uploadInsights", () => {
   });
 
   it("returns error on rate limit (429)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 429,
-      json: async () => ({ error: "Too many uploads" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Too many uploads" }, 429));
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "t",
@@ -346,6 +339,21 @@ describe("uploadInsights", () => {
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain("429");
+  });
+
+  it("returns normalized timeout errors", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "t",
+      serverUrl: "https://x.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Request timed out after 30000ms");
   });
 });
 
@@ -355,7 +363,7 @@ describe("triggerRecalculate", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("sends POST to /api/recalculate with Bearer auth", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
     await triggerRecalculate("https://chapa.example.com", "token");
     expect(mockFetch).toHaveBeenCalledWith(
       "https://chapa.example.com/api/recalculate",
@@ -374,7 +382,7 @@ describe("triggerRecalculate", () => {
   });
 
   it("does not throw on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "nope" }, 500));
     await expect(triggerRecalculate("https://x.com", "t")).resolves.toBeUndefined();
   });
 });

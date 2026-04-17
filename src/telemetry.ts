@@ -1,4 +1,5 @@
 import { stripTrailingSlashes } from "./shared.js";
+import { requestJson } from "./http.js";
 
 export interface TelemetryPayload {
   operationId: string;
@@ -24,7 +25,7 @@ export interface TelemetryPayload {
 /** Classify an error message into a category for dashboarding. */
 export function classifyError(message: string): TelemetryPayload["errorCategory"] {
   if (/\b40[13]\b/.test(message)) return "auth";
-  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|DNS/i.test(message)) return "network";
+  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|DNS|timed out/i.test(message)) return "network";
   if (/graphql/i.test(message)) return "graphql";
   if (/\b5\d{2}\b/.test(message)) return "server";
   return "unknown";
@@ -39,11 +40,12 @@ export async function sendTelemetry(
   const url = `${baseUrl}/api/telemetry`;
 
   try {
-    await fetch(url, {
+    await requestJson<Record<string, never>>({
+      url,
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(5000),
+      timeoutMs: 5000,
+      body: payload,
+      fallbackData: {},
     });
   } catch {
     // Intentionally swallowed — telemetry must never block or fail the CLI

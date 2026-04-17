@@ -15,6 +15,7 @@ const mockClassifyError = vi.hoisted(() => vi.fn());
 const mockParseInsightsHtml = vi.hoisted(() => vi.fn());
 const mockUploadInsights = vi.hoisted(() => vi.fn());
 const mockTriggerRecalculate = vi.hoisted(() => vi.fn());
+const mockInsightsModuleImported = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 const mockResolve = vi.hoisted(() => vi.fn());
 
@@ -23,9 +24,18 @@ vi.mock("./auth.js", () => ({ resolveToken: mockResolveToken }));
 vi.mock("./fetch-emu.js", () => ({ fetchEmuStats: mockFetchEmuStats }));
 vi.mock("./upload.js", () => ({ uploadSupplementalStats: mockUploadSupplementalStats }));
 vi.mock("./insights.js", () => ({
-  parseInsightsHtml: mockParseInsightsHtml,
-  uploadInsights: mockUploadInsights,
-  triggerRecalculate: mockTriggerRecalculate,
+  get parseInsightsHtml() {
+    mockInsightsModuleImported();
+    return mockParseInsightsHtml;
+  },
+  get uploadInsights() {
+    mockInsightsModuleImported();
+    return mockUploadInsights;
+  },
+  get triggerRecalculate() {
+    mockInsightsModuleImported();
+    return mockTriggerRecalculate;
+  },
 }));
 vi.mock("./config.js", () => ({
   loadConfig: mockLoadConfig,
@@ -75,6 +85,37 @@ function defaultArgs(overrides: Record<string, unknown> = {}) {
     version: false,
     help: false,
     ...overrides,
+  };
+}
+
+function successFetchResult(stats: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    stats: {
+      commitsTotal: 0,
+      activeDays: 0,
+      prsMergedCount: 0,
+      prsMergedWeight: 0,
+      reviewsSubmittedCount: 0,
+      issuesClosedCount: 0,
+      linesAdded: 0,
+      linesDeleted: 0,
+      reposContributed: 0,
+      totalStars: 0,
+      totalForks: 0,
+      ...stats,
+    },
+  };
+}
+
+function failedFetchResult(
+  error = "GraphQL HTTP 401: Unauthorized",
+  errorCategory: string = "auth",
+) {
+  return {
+    ok: false,
+    error,
+    errorCategory,
   };
 }
 
@@ -152,7 +193,7 @@ describe("index.ts command dispatch", () => {
     // Safe defaults for all downstream mocks
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue(null);
-    mockFetchEmuStats.mockResolvedValue(null);
+    mockFetchEmuStats.mockResolvedValue(failedFetchResult("mock", "unknown"));
     mockUploadSupplementalStats.mockResolvedValue({ success: false, error: "mock" });
     mockLogin.mockResolvedValue(undefined);
     mockDeleteConfig.mockReturnValue(false);
@@ -307,6 +348,23 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("does not import insights module for login command", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+
+    await runMain();
+
+    expect(mockInsightsModuleImported).not.toHaveBeenCalled();
+  });
+
+  it("exits 1 through the error boundary when login rejects", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+    mockLogin.mockRejectedValue(new Error("Session expired. Please try again."));
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
   // ── logout command ───────────────────────────────────────────────────
 
   it("prints success message when logout removes credentials", async () => {
@@ -423,7 +481,7 @@ describe("index.ts command dispatch", () => {
 
   // ── merge: fetchEmuStats fails ───────────────────────────────────────
 
-  it("exits 1 when fetchEmuStats returns null", async () => {
+  it("exits 1 when fetchEmuStats returns a typed failure", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
         command: "merge",
@@ -434,13 +492,46 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(null);
+    mockFetchEmuStats.mockResolvedValue(
+      failedFetchResult("GitHub user not found or inaccessible", "graphql"),
+    );
 
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = loggerOutput(mockLogger.error);
-    expect(output).toContain("Failed to fetch EMU stats");
+    expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
+  });
+
+  it("sends failure telemetry when GitHub fetch fails before upload", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(
+      failedFetchResult("Request timed out after 30000ms", "network"),
+    );
+
+    await runMain();
+
+    expect(mockSendTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        success: false,
+        errorCategory: "network",
+        targetHandle: "juan294",
+        sourceHandle: "corp_user",
+        stats: expect.objectContaining({ commitsTotal: 0 }),
+        timing: expect.objectContaining({ uploadMs: 0 }),
+      }),
+    );
+    expect(mockSendTelemetry).toHaveBeenCalledTimes(1);
+    expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
   });
 
   // ── merge: upload fails ──────────────────────────────────────────────
@@ -456,11 +547,11 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 10,
       prsMergedCount: 2,
       reviewsSubmittedCount: 1,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({
       success: false,
       error: "Server returned 401: Invalid token",
@@ -484,13 +575,13 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 10,
       reposContributed: 2,
       prsMergedCount: 2,
       activeDays: 5,
       reviewsSubmittedCount: 1,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({
       success: false,
       error: "Server returned 401: Invalid token",
@@ -508,6 +599,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "corp_user",
       }),
     );
+    expect(mockSendTelemetry).toHaveBeenCalledTimes(1);
   });
 
   // ── merge: happy path ────────────────────────────────────────────────
@@ -523,13 +615,13 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 42,
       prsMergedCount: 5,
       reviewsSubmittedCount: 3,
       reposContributed: 7,
       activeDays: 180,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
@@ -550,6 +642,29 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("does not import insights module for merge command", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
+      commitsTotal: 42,
+      prsMergedCount: 5,
+      reviewsSubmittedCount: 3,
+    }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockInsightsModuleImported).not.toHaveBeenCalled();
+  });
+
   it("shows formatStatsSummary output in default merge", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
@@ -561,11 +676,11 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 42,
       prsMergedCount: 5,
       reviewsSubmittedCount: 3,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
     mockFormatStatsSummary.mockReturnValue("  Commits: 42\n  Repos: 7");
 
@@ -588,13 +703,13 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 42,
       reposContributed: 7,
       prsMergedCount: 5,
       activeDays: 180,
       reviewsSubmittedCount: 3,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
@@ -610,6 +725,7 @@ describe("index.ts command dispatch", () => {
         cliVersion: expect.any(String),
       }),
     );
+    expect(mockSendTelemetry).toHaveBeenCalledTimes(1);
   });
 
   // ── merge: --json output ─────────────────────────────────────────────
@@ -626,7 +742,7 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 42,
       activeDays: 180,
       prsMergedCount: 5,
@@ -638,7 +754,7 @@ describe("index.ts command dispatch", () => {
       reposContributed: 7,
       totalStars: 12,
       totalForks: 3,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
@@ -670,13 +786,13 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 10,
       reposContributed: 2,
       prsMergedCount: 1,
       activeDays: 5,
       reviewsSubmittedCount: 0,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({
       success: false,
       error: "Server returned 500: Internal Server Error",
@@ -703,11 +819,11 @@ describe("index.ts command dispatch", () => {
       server: "https://custom.server.com",
     });
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 10,
       prsMergedCount: 1,
       reviewsSubmittedCount: 0,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
@@ -866,6 +982,26 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("Success!");
   });
 
+  it("loads insights module when insights command runs", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockUploadInsights.mockResolvedValue({
+      success: true,
+      craftScore: {
+        craftScore: 72,
+        tier: "Expert",
+        dimensions: { proficiency: 80, effectiveness: 70, sophistication: 66 },
+        reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
+      },
+    });
+
+    await runMain();
+
+    expect(mockInsightsModuleImported).toHaveBeenCalled();
+  });
+
   it("triggers recalculate on successful upload", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({ command: "insights", file: "report.html", handle: "user", token: "tok" }),
@@ -979,11 +1115,11 @@ describe("index.ts command dispatch", () => {
       server: "https://saved.server.com",
     });
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue({
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({
       commitsTotal: 10,
       prsMergedCount: 1,
       reviewsSubmittedCount: 0,
-    });
+    }));
     mockUploadSupplementalStats.mockResolvedValue({ success: true });
 
     await runMain();
@@ -1029,8 +1165,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    const output = spyOutput(errorSpy);
-    expect(output).toContain("Network timeout");
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it("exits 1 when fetchEmuStats throws an unexpected error", async () => {

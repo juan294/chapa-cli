@@ -4,6 +4,13 @@ import type { StatsData } from "./shared";
 
 const mockFetch = vi.fn();
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 function makeStats(): StatsData {
   return {
     handle: "corp_user",
@@ -36,11 +43,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("sends POST with correct body and auth header", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
 
     const result = await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -69,11 +72,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("returns error message on 401", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: "Invalid token" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Invalid token" }, 401));
 
     const result = await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -88,11 +87,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("returns error message on 403", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({ error: "Handle mismatch" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Handle mismatch" }, 403));
 
     const result = await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -125,7 +120,7 @@ describe("uploadSupplementalStats", () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => { throw new Error("invalid json"); },
+      text: async () => "(unreadable)",
     });
 
     const result = await uploadSupplementalStats({
@@ -146,7 +141,7 @@ describe("uploadSupplementalStats", () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => { throw new Error("invalid json"); },
+      text: async () => "",
     });
 
     const result = await uploadSupplementalStats({
@@ -163,11 +158,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("strips trailing slash from server URL", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
 
     await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -181,5 +172,22 @@ describe("uploadSupplementalStats", () => {
       "https://chapa.thecreativetoken.com/api/supplemental",
       expect.anything(),
     );
+  });
+
+  it("returns normalized timeout errors", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Request timed out after 30000ms");
   });
 });

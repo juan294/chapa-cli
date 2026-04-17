@@ -1,6 +1,7 @@
 import { parseHTML } from "linkedom";
 import type { InsightsUpload } from "./shared.js";
 import { stripTrailingSlashes } from "./shared.js";
+import { requestJson } from "./http.js";
 
 function findChartCard(doc: Document, titlePrefix: string): Element | null {
   const cards = doc.querySelectorAll(".chart-card");
@@ -281,24 +282,39 @@ export async function uploadInsights(
   log?.debug(`Insights payload size: ${payload.length} bytes`);
 
   try {
-    const res = await fetch(url, {
+    const res = await requestJson<{
+      craftScore?: InsightsUploadResult["craftScore"];
+    }>({
+      url,
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${opts.token}`,
-      },
-      body: payload,
+      token: opts.token,
+      timeoutMs: 30_000,
+      body: opts.data,
+      fallbackData: {},
     });
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
+      if (res.category !== "http") {
+        return {
+          success: false,
+          error: `Upload failed: ${res.message}`,
+        };
+      }
+
+      const body = typeof res.body === "object" && res.body !== null
+        ? res.body as Record<string, unknown>
+        : {};
+      const reason =
+        typeof body.error === "string" ? body.error
+          : typeof body.reason === "string" ? body.reason
+            : "Unknown error";
       return {
         success: false,
-        error: `Server returned ${res.status}: ${body.error ?? body.reason ?? "Unknown error"}`,
+        error: `Server returned ${res.status ?? "unknown"}: ${reason}`,
       };
     }
 
-    const body = await res.json().catch(() => ({}));
+    const body = res.data;
     log?.debug(`Server response: ${JSON.stringify(body)}`);
     return {
       success: true,
@@ -321,12 +337,12 @@ export async function triggerRecalculate(
   const url = `${baseUrl}/api/recalculate`;
 
   try {
-    const res = await fetch(url, {
+    const res = await requestJson<Record<string, never>>({
+      url,
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      token,
+      timeoutMs: 30_000,
+      fallbackData: {},
     });
     if (res.ok) {
       logger?.debug("Impact score recalculated.");

@@ -4,6 +4,13 @@ import { fetchEmuStats } from "./fetch-emu";
 // Mock global fetch
 const mockFetch = vi.fn();
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("fetchEmuStats", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", mockFetch);
@@ -14,9 +21,7 @@ describe("fetchEmuStats", () => {
   });
 
   it("returns StatsData on successful GraphQL response", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    mockFetch.mockResolvedValue(jsonResponse({
         data: {
           user: {
             login: "Juan_corp",
@@ -78,26 +83,23 @@ describe("fetchEmuStats", () => {
             ownedRepos: { nodes: [{ stargazerCount: 25, forkCount: 5, watchers: { totalCount: 10 } }] },
           },
         },
-      }),
-    });
+    }));
 
     const result = await fetchEmuStats("Juan_corp", "ghp_emu_token");
-    expect(result).not.toBeNull();
-    expect(result!.handle).toBe("Juan_corp");
-    expect(result!.commitsTotal).toBe(42);
-    expect(result!.prsMergedCount).toBe(1); // only merged
-    expect(result!.reviewsSubmittedCount).toBe(5);
-    expect(result!.issuesClosedCount).toBe(2);
-    expect(result!.reposContributed).toBe(2);
-    expect(result!.heatmapData).toHaveLength(2);
-    expect(result!.activeDays).toBe(1); // only Jan 1 has count > 0
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    expect(result.stats.handle).toBe("Juan_corp");
+    expect(result.stats.commitsTotal).toBe(42);
+    expect(result.stats.prsMergedCount).toBe(1); // only merged
+    expect(result.stats.reviewsSubmittedCount).toBe(5);
+    expect(result.stats.issuesClosedCount).toBe(2);
+    expect(result.stats.reposContributed).toBe(2);
+    expect(result.stats.heatmapData).toHaveLength(2);
+    expect(result.stats.activeDays).toBe(1); // only Jan 1 has count > 0
   });
 
   it("sends Authorization header with EMU token", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { user: null } }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ data: { user: null } }));
 
     await fetchEmuStats("corp_user", "ghp_test_token");
 
@@ -119,24 +121,33 @@ describe("fetchEmuStats", () => {
     });
 
     const result = await fetchEmuStats("corp_user", "bad_token");
-    expect(result).toBeNull();
+    expect(result).toEqual({
+      ok: false,
+      error: "GraphQL HTTP 401: Unauthorized",
+      errorCategory: "auth",
+    });
   });
 
   it("returns null when user is not found", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { user: null } }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ data: { user: null } }));
 
     const result = await fetchEmuStats("nonexistent_user", "ghp_token");
-    expect(result).toBeNull();
+    expect(result).toEqual({
+      ok: false,
+      error: "GitHub user not found or inaccessible",
+      errorCategory: "unknown",
+    });
   });
 
   it("returns null when fetch throws", async () => {
     mockFetch.mockRejectedValue(new Error("Network error"));
 
     const result = await fetchEmuStats("corp_user", "ghp_token");
-    expect(result).toBeNull();
+    expect(result).toEqual({
+      ok: false,
+      error: "Network error",
+      errorCategory: "network",
+    });
   });
 
   it("logs only error .message when fetch throws, not the full error object (#8)", async () => {
@@ -208,9 +219,7 @@ describe("fetchEmuStats", () => {
 
     const graphqlErrors = [{ message: "Could not resolve to a User", type: "NOT_FOUND" }];
 
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    mockFetch.mockResolvedValue(jsonResponse({
         errors: graphqlErrors,
         data: {
           user: {
@@ -233,11 +242,10 @@ describe("fetchEmuStats", () => {
             ownedRepos: { nodes: [] },
           },
         },
-      }),
-    });
+    }));
 
     const result = await fetchEmuStats("corp_user", "ghp_token");
-    expect(result).not.toBeNull();
+    expect(result.ok).toBe(true);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("[cli] GraphQL errors for corp_user:"),
     );
@@ -257,9 +265,7 @@ describe("fetchEmuStats", () => {
       type: "SOME_ERROR",
     }));
 
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    mockFetch.mockResolvedValue(jsonResponse({
         errors: longErrors,
         data: {
           user: {
@@ -282,8 +288,7 @@ describe("fetchEmuStats", () => {
             ownedRepos: { nodes: [] },
           },
         },
-      }),
-    });
+    }));
 
     await fetchEmuStats("corp_user", "ghp_token");
 
@@ -373,7 +378,11 @@ describe("fetchEmuStats", () => {
     });
 
     const result = await fetchEmuStats("corp_user", "ghp_token");
-    expect(result).toBeNull();
+    expect(result).toEqual({
+      ok: false,
+      error: "GraphQL HTTP 500: (unreadable)",
+      errorCategory: "server",
+    });
 
     // Should still log something meaningful despite text() failing
     const logged = errorSpy.mock.calls[0]![0] as string;
@@ -384,9 +393,7 @@ describe("fetchEmuStats", () => {
   });
 
   it("filters out null PR nodes", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    mockFetch.mockResolvedValue(jsonResponse({
         data: {
           user: {
             login: "corp_user",
@@ -419,11 +426,30 @@ describe("fetchEmuStats", () => {
             ownedRepos: { nodes: [] },
           },
         },
-      }),
-    });
+    }));
 
     const result = await fetchEmuStats("corp_user", "ghp_token");
-    expect(result).not.toBeNull();
-    expect(result!.prsMergedCount).toBe(1);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    expect(result.stats.prsMergedCount).toBe(1);
+  });
+
+  it("maps timeout failures into a stable error path", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+    expect(result).toEqual({
+      ok: false,
+      error: "Request timed out after 30000ms",
+      errorCategory: "network",
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[cli] fetch error: Request timed out after 30000ms",
+    );
+
+    errorSpy.mockRestore();
   });
 });

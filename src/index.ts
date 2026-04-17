@@ -3,13 +3,13 @@ import type { CliArgs } from "./cli.js";
 import { resolveToken } from "./auth.js";
 import { fetchEmuStats } from "./fetch-emu.js";
 import { uploadSupplementalStats } from "./upload.js";
-import { parseInsightsHtml, uploadInsights, triggerRecalculate } from "./insights.js";
 import { loadConfig, deleteConfig } from "./config.js";
 import { login } from "./login.js";
 import { createLogger } from "./logger.js";
 import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
 import { sendTelemetry, classifyError } from "./telemetry.js";
+import type { TelemetryPayload } from "./telemetry.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -55,10 +55,23 @@ class CliError extends Error {
   }
 }
 
+type InsightsModule = typeof import("./insights.js");
+
+function loadInsightsModule(): Promise<InsightsModule> {
+  return import("./insights.js");
+}
+
 // ── Command Handlers ──────────────────────────────────────────────────────
 
 async function handleLogin(args: CliArgs): Promise<void> {
-  await login(args.server, { verbose: args.verbose, insecure: args.insecure });
+  try {
+    await login(args.server, { verbose: args.verbose, insecure: args.insecure });
+  } catch (err) {
+    if (err instanceof Error) {
+      throw new CliError(err.message);
+    }
+    throw err;
+  }
 }
 
 function handleLogout(): void {
@@ -70,7 +83,10 @@ function handleLogout(): void {
   }
 }
 
-async function handleInsights(args: CliArgs): Promise<void> {
+async function handleInsights(
+  args: CliArgs,
+  insightsModule: Pick<InsightsModule, "parseInsightsHtml" | "uploadInsights" | "triggerRecalculate">,
+): Promise<void> {
   const log = createLogger({ verbose: args.verbose, json: args.json });
   log.time("total");
 
@@ -112,7 +128,7 @@ async function handleInsights(args: CliArgs): Promise<void> {
   log.time("parse");
   let data: InsightsUpload;
   try {
-    data = parseInsightsHtml(html);
+    data = insightsModule.parseInsightsHtml(html);
   } catch (err) {
     log.error(`Error parsing insights HTML: ${(err as Error).message}`);
     throw new CliError("Insights parse error");
@@ -130,7 +146,7 @@ async function handleInsights(args: CliArgs): Promise<void> {
 
   log.info(`Uploading insights to ${serverUrl}...`);
   log.time("upload");
-  const result = await uploadInsights({
+  const result = await insightsModule.uploadInsights({
     data,
     token: authToken,
     serverUrl,
@@ -140,7 +156,7 @@ async function handleInsights(args: CliArgs): Promise<void> {
 
   // Trigger recalculate (non-blocking, fire-and-forget)
   if (result.success) {
-    triggerRecalculate(serverUrl, authToken, log);
+    insightsModule.triggerRecalculate(serverUrl, authToken, log);
   }
 
   const totalMs = log.timeEnd("total");
@@ -209,6 +225,16 @@ async function handleMerge(args: CliArgs): Promise<void> {
 
   const handle = args.handle ?? config?.handle;
   const emuHandle = args.emuHandle;
+  const serverUrl = resolveServerUrl(args.server, config?.server);
+  const operationId = randomUUID();
+  let fetchMs = 0;
+  let uploadMs = 0;
+  let totalMs = 0;
+  let telemetryStats = emptyMergeStats();
+  let telemetryErrorCategory: TelemetryPayload["errorCategory"] | undefined;
+  let shouldSendTelemetry = false;
+  let mergeSucceeded = false;
+  let caught: unknown;
 
   if (!emuHandle) {
     log.error("Error: --emu-handle is required.");
@@ -233,110 +259,150 @@ async function handleMerge(args: CliArgs): Promise<void> {
     throw new CliError("Not authenticated");
   }
 
-  log.info(`Fetching stats for EMU account: ${emuHandle}...`);
-  log.time("fetch");
-  const emuStats = await fetchEmuStats(emuHandle, emuToken, { logger: log });
-  const fetchMs = log.timeEnd("fetch");
+  try {
+    log.info(`Fetching stats for EMU account: ${emuHandle}...`);
+    log.time("fetch");
+    const fetchResult = await fetchEmuStats(emuHandle, emuToken, { logger: log });
+    fetchMs = log.timeEnd("fetch");
 
-  if (!emuStats) {
-    log.error("Error: Failed to fetch EMU stats. Check your EMU token and handle.");
-    throw new CliError("Failed to fetch EMU stats");
-  }
+    if (!fetchResult.ok) {
+      telemetryErrorCategory = fetchResult.errorCategory;
+      shouldSendTelemetry = true;
+      totalMs = log.timeEnd("total");
 
-  log.info(formatStatsSummary(emuStats));
+      if (args.json) {
+        process.stdout.write(JSON.stringify({
+          success: false,
+          targetHandle: handle,
+          sourceHandle: emuHandle,
+          error: fetchResult.error,
+          timing: { fetchMs: round(fetchMs), uploadMs: 0, totalMs: round(totalMs) },
+          cliVersion: VERSION,
+        }, null, 2) + "\n");
+      }
 
-  const serverUrl = resolveServerUrl(args.server, config?.server);
-  log.info(`Uploading supplemental stats to ${serverUrl}...`);
-  log.time("upload");
-  const result = await uploadSupplementalStats({
-    targetHandle: handle,
-    sourceHandle: emuHandle,
-    stats: emuStats,
-    token: authToken,
-    serverUrl,
-    logger: log,
-  });
-  const uploadMs = log.timeEnd("upload");
-  const totalMs = log.timeEnd("total");
+      throw new CliError(fetchResult.error);
+    }
 
-  if (!result.success) {
+    const emuStats = fetchResult.stats;
+    telemetryStats = mergeTelemetryStats(emuStats);
+    log.info(formatStatsSummary(emuStats));
+
+    log.info(`Uploading supplemental stats to ${serverUrl}...`);
+    log.time("upload");
+    const result = await uploadSupplementalStats({
+      targetHandle: handle,
+      sourceHandle: emuHandle,
+      stats: emuStats,
+      token: authToken,
+      serverUrl,
+      logger: log,
+    });
+    uploadMs = log.timeEnd("upload");
+
+    if (!result.success) {
+      telemetryErrorCategory = classifyError(result.error ?? "unknown");
+      shouldSendTelemetry = true;
+      totalMs = log.timeEnd("total");
+
+      if (args.json) {
+        process.stdout.write(JSON.stringify({
+          success: false,
+          targetHandle: handle,
+          sourceHandle: emuHandle,
+          error: result.error,
+          timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+          cliVersion: VERSION,
+        }, null, 2) + "\n");
+      } else {
+        log.error(`Error: ${result.error}`);
+      }
+
+      throw new CliError(result.error ?? "Upload failed");
+    }
+
+    totalMs = log.timeEnd("total");
+    mergeSucceeded = true;
+    shouldSendTelemetry = true;
+
     if (args.json) {
       process.stdout.write(JSON.stringify({
-        success: false,
+        success: true,
         targetHandle: handle,
         sourceHandle: emuHandle,
-        error: result.error,
+        stats: {
+          commitsTotal: emuStats.commitsTotal,
+          activeDays: emuStats.activeDays,
+          prsMergedCount: emuStats.prsMergedCount,
+          prsMergedWeight: emuStats.prsMergedWeight,
+          reviewsSubmittedCount: emuStats.reviewsSubmittedCount,
+          issuesClosedCount: emuStats.issuesClosedCount,
+          linesAdded: emuStats.linesAdded,
+          linesDeleted: emuStats.linesDeleted,
+          reposContributed: emuStats.reposContributed,
+          totalStars: emuStats.totalStars,
+          totalForks: emuStats.totalForks,
+        },
         timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
         cliVersion: VERSION,
       }, null, 2) + "\n");
     } else {
-      log.error(`Error: ${result.error}`);
+      log.info(`Success! Stats merged for ${emuHandle} -> ${handle} (${(totalMs / 1000).toFixed(1)}s)`);
     }
-
-    // Fire telemetry (non-blocking)
-    sendTelemetry(serverUrl, {
-      operationId: randomUUID(),
-      targetHandle: handle,
-      sourceHandle: emuHandle,
-      success: false,
-      errorCategory: classifyError(result.error ?? "unknown"),
-      stats: {
-        commitsTotal: emuStats.commitsTotal,
-        reposContributed: emuStats.reposContributed,
-        prsMergedCount: emuStats.prsMergedCount,
-        activeDays: emuStats.activeDays,
-        reviewsSubmittedCount: emuStats.reviewsSubmittedCount,
-      },
-      timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
-      cliVersion: VERSION,
-    });
-
-    throw new CliError(result.error ?? "Upload failed");
+  } catch (err) {
+    caught = err;
+    if (!shouldSendTelemetry) {
+      telemetryErrorCategory = classifyError(err instanceof Error ? err.message : String(err));
+      shouldSendTelemetry = true;
+    }
+  } finally {
+    if (shouldSendTelemetry) {
+      sendTelemetry(serverUrl, {
+        operationId,
+        targetHandle: handle,
+        sourceHandle: emuHandle,
+        success: mergeSucceeded,
+        errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
+        stats: telemetryStats,
+        timing: {
+          fetchMs: round(fetchMs),
+          uploadMs: round(uploadMs),
+          totalMs: round(totalMs || log.timeEnd("total")),
+        },
+        cliVersion: VERSION,
+      });
+    }
   }
 
-  // ── Success output ───────────────────────────────────────────────────
-
-  if (args.json) {
-    process.stdout.write(JSON.stringify({
-      success: true,
-      targetHandle: handle,
-      sourceHandle: emuHandle,
-      stats: {
-        commitsTotal: emuStats.commitsTotal,
-        activeDays: emuStats.activeDays,
-        prsMergedCount: emuStats.prsMergedCount,
-        prsMergedWeight: emuStats.prsMergedWeight,
-        reviewsSubmittedCount: emuStats.reviewsSubmittedCount,
-        issuesClosedCount: emuStats.issuesClosedCount,
-        linesAdded: emuStats.linesAdded,
-        linesDeleted: emuStats.linesDeleted,
-        reposContributed: emuStats.reposContributed,
-        totalStars: emuStats.totalStars,
-        totalForks: emuStats.totalForks,
-      },
-      timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
-      cliVersion: VERSION,
-    }, null, 2) + "\n");
-  } else {
-    log.info(`Success! Stats merged for ${emuHandle} -> ${handle} (${(totalMs / 1000).toFixed(1)}s)`);
+  if (caught) {
+    throw caught;
   }
+}
 
-  // Fire telemetry (non-blocking)
-  sendTelemetry(serverUrl, {
-    operationId: randomUUID(),
-    targetHandle: handle,
-    sourceHandle: emuHandle,
-    success: true,
-    stats: {
-      commitsTotal: emuStats.commitsTotal,
-      reposContributed: emuStats.reposContributed,
-      prsMergedCount: emuStats.prsMergedCount,
-      activeDays: emuStats.activeDays,
-      reviewsSubmittedCount: emuStats.reviewsSubmittedCount,
-    },
-    timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
-    cliVersion: VERSION,
-  });
+function emptyMergeStats() {
+  return {
+    commitsTotal: 0,
+    reposContributed: 0,
+    prsMergedCount: 0,
+    activeDays: 0,
+    reviewsSubmittedCount: 0,
+  };
+}
+
+function mergeTelemetryStats(stats: {
+  commitsTotal: number;
+  reposContributed: number;
+  prsMergedCount: number;
+  activeDays: number;
+  reviewsSubmittedCount: number;
+}) {
+  return {
+    commitsTotal: stats.commitsTotal,
+    reposContributed: stats.reposContributed,
+    prsMergedCount: stats.prsMergedCount,
+    activeDays: stats.activeDays,
+    reviewsSubmittedCount: stats.reviewsSubmittedCount,
+  };
 }
 
 // ── Main Dispatcher ───────────────────────────────────────────────────────
@@ -378,7 +444,7 @@ async function main(): Promise<void> {
   }
 
   if (args.command === "insights") {
-    await handleInsights(args);
+    await handleInsights(args, await loadInsightsModule());
     return;
   }
 

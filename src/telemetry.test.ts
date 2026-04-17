@@ -3,6 +3,13 @@ import { sendTelemetry, classifyError, type TelemetryPayload } from "./telemetry
 
 const mockFetch = vi.fn();
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("classifyError", () => {
   it("classifies 401 as auth", () => {
     expect(classifyError("Server returned 401: Invalid token")).toBe("auth");
@@ -18,6 +25,10 @@ describe("classifyError", () => {
 
   it("classifies ETIMEDOUT as network", () => {
     expect(classifyError("ETIMEDOUT")).toBe("network");
+  });
+
+  it("classifies normalized timeout messages as network", () => {
+    expect(classifyError("Upload failed: Request timed out after 30000ms")).toBe("network");
   });
 
   it("classifies DNS errors as network", () => {
@@ -75,7 +86,7 @@ describe("sendTelemetry", () => {
   }
 
   it("sends POST to /api/telemetry with JSON body", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com", makePayload());
 
@@ -95,7 +106,7 @@ describe("sendTelemetry", () => {
   });
 
   it("includes AbortSignal with 5s timeout", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com", makePayload());
 
@@ -104,7 +115,7 @@ describe("sendTelemetry", () => {
   });
 
   it("strips trailing slash from server URL", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com/", makePayload());
 
@@ -124,7 +135,7 @@ describe("sendTelemetry", () => {
   });
 
   it("never throws on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "server" }, 500));
 
     await expect(
       sendTelemetry("https://chapa.example.com", makePayload()),
@@ -132,7 +143,7 @@ describe("sendTelemetry", () => {
   });
 
   it("includes error category when success is false", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry(
       "https://chapa.example.com",
@@ -145,7 +156,7 @@ describe("sendTelemetry", () => {
   });
 
   it("does not include sensitive data (no tokens, no stack traces)", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com", makePayload());
 
@@ -154,5 +165,15 @@ describe("sendTelemetry", () => {
     expect(bodyStr).not.toContain("gho_");
     expect(bodyStr).not.toContain("Bearer");
     expect(bodyStr).not.toContain("stack");
+  });
+
+  it("never throws on timeout failures", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    await expect(
+      sendTelemetry("https://chapa.example.com", makePayload()),
+    ).resolves.toBeUndefined();
   });
 });
