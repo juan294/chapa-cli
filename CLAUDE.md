@@ -34,7 +34,7 @@ Six API endpoints connect the CLI to the Chapa server: device flow auth, token e
 ## Branching Strategy
 
 - `develop` — default working branch; all feature branches merge here
-- `main` — release branch; publish to npm is done manually with 2FA
+- `main` — release branch; GitHub Releases created from `main` publish to npm automatically, with manual `npm publish --otp=<code>` only as a fallback
 
 ## Deployment
 
@@ -82,7 +82,7 @@ Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 
 1. Bump `version` in `package.json` on `develop`
 2. Merge `develop` → `main` via PR
-3. Create a GitHub Release — the `publish.yml` workflow publishes to npm automatically
+3. Create a GitHub Release from a tag/commit on `main` — the `publish.yml` workflow hard-fails unless the release targets `main` and the tagged commit is reachable from `origin/main`, then publishes to npm automatically
 4. If automated publish fails (strict 2FA), publish manually: `npm publish --otp=<code>`
 
 ## Code Style

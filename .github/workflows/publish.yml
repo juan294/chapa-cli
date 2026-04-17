@@ -17,6 +17,22 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify release provenance
+        run: |
+          if [ "${{ github.event.release.target_commitish }}" != "main" ]; then
+            echo "::error::Release target_commitish must be 'main' (got '${{ github.event.release.target_commitish }}')."
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "::error::Release tag commit $GITHUB_SHA is not reachable from origin/main."
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
         with:
