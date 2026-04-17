@@ -24,7 +24,6 @@ export async function uploadSupplementalStats(
   const baseUrl = stripTrailingSlashes(opts.serverUrl);
   const url = `${baseUrl}/api/supplemental`;
   const log = opts.logger;
-
   const payload = JSON.stringify({
     targetHandle: opts.targetHandle,
     sourceHandle: opts.sourceHandle,
@@ -39,12 +38,10 @@ export async function uploadSupplementalStats(
       method: "POST",
       token: opts.token,
       timeoutMs: 30_000,
-      body: {
-        targetHandle: opts.targetHandle,
-        sourceHandle: opts.sourceHandle,
-        stats: opts.stats,
+      headers: {
+        "Content-Type": "application/json",
       },
-      fallbackData: {},
+      body: payload,
     });
 
     if (!res.ok) {

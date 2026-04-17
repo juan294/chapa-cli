@@ -277,7 +277,6 @@ export async function uploadInsights(
   const baseUrl = stripTrailingSlashes(opts.serverUrl);
   const url = `${baseUrl}/api/insights`;
   const log = opts.logger;
-
   const payload = JSON.stringify(opts.data);
   log?.debug(`Insights payload size: ${payload.length} bytes`);
 
@@ -289,8 +288,10 @@ export async function uploadInsights(
       method: "POST",
       token: opts.token,
       timeoutMs: 30_000,
-      body: opts.data,
-      fallbackData: {},
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: payload,
     });
 
     if (!res.ok) {

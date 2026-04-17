@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { uploadSupplementalStats } from "./upload";
-import type { StatsData } from "./shared";
+import { uploadInsights } from "./insights";
+import type { InsightsUpload, StatsData } from "./shared";
 
 const mockFetch = vi.fn();
 
@@ -30,6 +31,53 @@ function makeStats(): StatsData {
     totalWatchers: 0,
     heatmapData: [],
     fetchedAt: new Date().toISOString(),
+  };
+}
+
+function makeInsightsData(): InsightsUpload {
+  return {
+    tool: "claude-code",
+    reportPeriod: {
+      start: "2026-02-20",
+      end: "2026-03-07",
+    },
+    volume: {
+      messages: 120,
+      linesAdded: 800,
+      linesDeleted: 250,
+      files: 18,
+      days: 12,
+      msgsPerDay: 10,
+    },
+    toolUsage: { Read: 50, Edit: 30 },
+    sessionTypes: { coding: 8, research: 4 },
+    outcomes: {
+      fullyAchieved: 6,
+      mostlyAchieved: 4,
+      partiallyAchieved: 2,
+    },
+    friction: {
+      buggyCode: 1,
+      wrongApproach: 2,
+      misunderstoodRequest: 1,
+    },
+    satisfaction: {
+      dissatisfied: 1,
+      likelySatisfied: 3,
+      satisfied: 8,
+    },
+    multiClauding: {
+      overlapEvents: 2,
+      sessionsInvolved: 2,
+      messagePercent: 12,
+    },
+    responseTime: {
+      medianSeconds: 18,
+      averageSeconds: 24,
+    },
+    toolErrors: { bash: 1 },
+    totalSessions: 12,
+    totalToolCalls: 80,
   };
 }
 
@@ -137,7 +185,7 @@ describe("uploadSupplementalStats", () => {
     expect(result.error).toContain("Unknown error");
   });
 
-  it("falls back when res.json() rejects on success response", async () => {
+  it("rejects empty 2xx responses instead of treating them as success", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -152,9 +200,27 @@ describe("uploadSupplementalStats", () => {
       serverUrl: "https://chapa.thecreativetoken.com",
     });
 
-    // Should still succeed — the fallback {} is used for serverResponse
-    expect(result.success).toBe(true);
-    expect(result.serverResponse).toEqual({});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
+  });
+
+  it("rejects malformed 2xx JSON responses instead of treating them as success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "{",
+    });
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
   });
 
   it("strips trailing slash from server URL", async () => {
@@ -189,5 +255,49 @@ describe("uploadSupplementalStats", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Upload failed: Request timed out after 30000ms");
+  });
+});
+
+describe("uploadInsights write contract", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects empty 2xx responses instead of reporting success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "",
+    });
+
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
+  });
+
+  it("rejects malformed 2xx JSON responses instead of reporting success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "{",
+    });
+
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
   });
 });
