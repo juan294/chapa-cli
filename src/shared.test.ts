@@ -621,6 +621,7 @@ describe("CONTRIBUTION_QUERY", () => {
     expect(CONTRIBUTION_QUERY).toContain("$until: DateTime!");
     expect(CONTRIBUTION_QUERY).toContain("$historySince: GitTimestamp!");
     expect(CONTRIBUTION_QUERY).toContain("$historyUntil: GitTimestamp!");
+    expect(CONTRIBUTION_QUERY).toContain("$prCursor: String");
   });
 
   it("queries user by login", () => {
@@ -636,10 +637,14 @@ describe("CONTRIBUTION_QUERY", () => {
 
   it("requests pull request contribution data", () => {
     expect(CONTRIBUTION_QUERY).toContain("pullRequestContributions");
+    expect(CONTRIBUTION_QUERY).toContain("after: $prCursor");
     expect(CONTRIBUTION_QUERY).toContain("additions");
     expect(CONTRIBUTION_QUERY).toContain("deletions");
     expect(CONTRIBUTION_QUERY).toContain("changedFiles");
     expect(CONTRIBUTION_QUERY).toContain("merged");
+    expect(CONTRIBUTION_QUERY).toContain("pageInfo");
+    expect(CONTRIBUTION_QUERY).toContain("hasNextPage");
+    expect(CONTRIBUTION_QUERY).toContain("endCursor");
   });
 
   it("requests review and issue contribution counts", () => {

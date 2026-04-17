@@ -1,7 +1,7 @@
 import type { StatsData, RawContributionData } from "./shared.js";
 import { CONTRIBUTION_QUERY, buildStatsFromRaw, SCORING_WINDOW_DAYS, extractErrorDetail } from "./shared.js";
 import type { Logger } from "./logger.js";
-import { requestJson } from "./http.js";
+import { requestJson, type RequestResult } from "./http.js";
 import type { TelemetryPayload } from "./telemetry.js";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +42,10 @@ interface GraphQLResponse {
               merged: boolean;
             } | null;
           } | null)[];
+          pageInfo?: {
+            hasNextPage: boolean;
+            endCursor: string | null;
+          };
         };
         pullRequestReviewContributions: { totalCount: number };
         issueContributions: { totalCount: number };
@@ -63,6 +67,10 @@ interface GraphQLResponse {
   errors?: { message: string; type?: string }[];
 }
 
+type GraphQLUser = NonNullable<NonNullable<GraphQLResponse["data"]>["user"]>;
+type PullRequestContributionConnection = GraphQLUser["contributionsCollection"]["pullRequestContributions"];
+type PullRequestContributionNode = NonNullable<PullRequestContributionConnection["nodes"][number]>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -73,6 +81,26 @@ const MAX_ERROR_BODY_LENGTH = 200;
 /** Truncate a string to the given max length, appending "..." if truncated. */
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "..." : s;
+}
+
+function logError(log: Logger | undefined, message: string): void {
+  if (log) {
+    log.error(message);
+    return;
+  }
+
+  console.error(message);
+}
+
+function normalizePullRequestNodes(
+  nodes: PullRequestContributionConnection["nodes"],
+): RawContributionData["pullRequests"]["nodes"] {
+  return nodes
+    .filter(
+      (n): n is PullRequestContributionNode & { pullRequest: NonNullable<PullRequestContributionNode["pullRequest"]> } =>
+        n != null && n.pullRequest != null,
+    )
+    .map((n) => n.pullRequest);
 }
 
 // ---------------------------------------------------------------------------
@@ -152,8 +180,8 @@ export async function fetchEmuStats(
 
   log?.debug(`Scoring window: ${since.toISOString()} → ${now.toISOString()}`);
 
-  try {
-    const res = await requestJson<GraphQLResponse>({
+  const requestPage = async (prCursor: string | null): Promise<RequestResult<GraphQLResponse>> =>
+    requestJson<GraphQLResponse>({
       url: "https://api.github.com/graphql",
       method: "POST",
       headers: {
@@ -169,13 +197,17 @@ export async function fetchEmuStats(
           until: now.toISOString(),
           historySince: since.toISOString(),
           historyUntil: now.toISOString(),
+          prCursor,
         },
       },
     });
 
+  try {
+    const res = await requestPage(null);
+
     if (!res.ok) {
       const failure = formatTransportFailure(res);
-      if (log) { log.error(failure.logMessage); } else { console.error(failure.logMessage); }
+      logError(log, failure.logMessage);
       return {
         ok: false,
         error: failure.error,
@@ -188,12 +220,12 @@ export async function fetchEmuStats(
     if (json.errors) {
       const errStr = truncate(JSON.stringify(json.errors), MAX_ERROR_BODY_LENGTH);
       const msg = `[cli] GraphQL errors for ${login}: ${errStr}`;
-      if (log) { log.error(msg); } else { console.error(msg); }
+      logError(log, msg);
     }
 
     if (!json.data?.user) {
       const msg = `[cli] GitHub user not found or inaccessible: ${login}`;
-      if (log) { log.error(msg); } else { console.error(msg); }
+      logError(log, msg);
       return {
         ok: false,
         error: "GitHub user not found or inaccessible",
@@ -204,15 +236,60 @@ export async function fetchEmuStats(
     const user = json.data.user;
     const cc = user.contributionsCollection;
 
-    // Normalize raw GraphQL response into RawContributionData shape.
-    // The GraphQL response wraps PRs as { pullRequest: { ... } } and may
-    // contain null nodes — filter and unwrap them here.
-    const prNodes = cc.pullRequestContributions.nodes
-      .filter(
-        (n): n is { pullRequest: { additions: number; deletions: number; changedFiles: number; merged: boolean } } =>
-          n != null && n.pullRequest != null,
-      )
-      .map((n) => n.pullRequest);
+    const prNodes = normalizePullRequestNodes(cc.pullRequestContributions.nodes);
+    let { hasNextPage, endCursor } = cc.pullRequestContributions.pageInfo ?? {
+      hasNextPage: false,
+      endCursor: null,
+    };
+
+    while (hasNextPage) {
+      if (!endCursor) {
+        const msg = `[cli] GraphQL pagination error for ${login}: missing endCursor`;
+        logError(log, msg);
+        return {
+          ok: false,
+          error: "GraphQL pagination error: missing endCursor",
+          errorCategory: "graphql",
+        };
+      }
+
+      const pageRes = await requestPage(endCursor);
+      if (!pageRes.ok) {
+        const failure = formatTransportFailure(pageRes);
+        logError(log, failure.logMessage);
+        return {
+          ok: false,
+          error: failure.error,
+          errorCategory: failure.errorCategory,
+        };
+      }
+
+      const pageJson = pageRes.data;
+
+      if (pageJson.errors) {
+        const errStr = truncate(JSON.stringify(pageJson.errors), MAX_ERROR_BODY_LENGTH);
+        logError(log, `[cli] GraphQL errors for ${login}: ${errStr}`);
+      }
+
+      if (!pageJson.data?.user) {
+        const msg = `[cli] GitHub user not found or inaccessible: ${login}`;
+        logError(log, msg);
+        return {
+          ok: false,
+          error: "GitHub user not found or inaccessible",
+          errorCategory: pageJson.errors?.length ? "graphql" : "unknown",
+        };
+      }
+
+      const pageConnection = pageJson.data.user.contributionsCollection.pullRequestContributions;
+      const pageInfo = pageConnection.pageInfo ?? {
+        hasNextPage: false,
+        endCursor: null,
+      };
+      prNodes.push(...normalizePullRequestNodes(pageConnection.nodes));
+      hasNextPage = pageInfo.hasNextPage;
+      endCursor = pageInfo.endCursor;
+    }
 
     const raw: RawContributionData = {
       login: user.login,
@@ -243,7 +320,7 @@ export async function fetchEmuStats(
   } catch (err) {
     const detail = extractErrorDetail(err as Error);
     const msg = `[cli] fetch error: ${detail}`;
-    if (log) { log.error(msg); } else { console.error(msg); }
+    logError(log, msg);
     return {
       ok: false,
       error: detail,

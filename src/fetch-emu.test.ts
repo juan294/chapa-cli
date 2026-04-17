@@ -13,6 +13,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 describe("fetchEmuStats", () => {
   beforeEach(() => {
+    mockFetch.mockReset();
     vi.stubGlobal("fetch", mockFetch);
   });
 
@@ -432,6 +433,97 @@ describe("fetchEmuStats", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected success");
     expect(result.stats.prsMergedCount).toBe(1);
+  });
+
+  it("aggregates pull request contributions across multiple GraphQL pages", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "corp_user",
+            name: "Corp User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: {
+                totalContributions: 101,
+                weeks: [],
+              },
+              pullRequestContributions: {
+                totalCount: 101,
+                nodes: Array.from({ length: 100 }, () => ({
+                  pullRequest: {
+                    additions: 1,
+                    deletions: 0,
+                    changedFiles: 1,
+                    merged: true,
+                  },
+                })),
+                pageInfo: {
+                  hasNextPage: true,
+                  endCursor: "cursor-100",
+                },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "corp_user",
+            name: "Corp User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: {
+                totalContributions: 101,
+                weeks: [],
+              },
+              pullRequestContributions: {
+                totalCount: 101,
+                nodes: [
+                  {
+                    pullRequest: {
+                      additions: 50,
+                      deletions: 5,
+                      changedFiles: 2,
+                      merged: true,
+                    },
+                  },
+                ],
+                pageInfo: {
+                  hasNextPage: false,
+                  endCursor: "cursor-101",
+                },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }));
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(result.stats.prsMergedCount).toBe(101);
+    expect(result.stats.linesAdded).toBe(150);
+    expect(result.stats.linesDeleted).toBe(5);
+
+    const secondRequest = mockFetch.mock.calls[1]?.[1];
+    expect(secondRequest).toBeDefined();
+    expect(typeof secondRequest?.body).toBe("string");
+    const secondRequestBody = JSON.parse(secondRequest!.body as string) as {
+      variables: { prCursor?: string | null };
+    };
+    expect(secondRequestBody.variables.prCursor).toBe("cursor-100");
   });
 
   it("maps timeout failures into a stable error path", async () => {

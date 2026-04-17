@@ -112,7 +112,7 @@ export interface RawContributionData {
  * the same ISO 8601 strings. They must be declared as separate variables.
  */
 export const CONTRIBUTION_QUERY = `
-query($login: String!, $since: DateTime!, $until: DateTime!, $historySince: GitTimestamp!, $historyUntil: GitTimestamp!) {
+query($login: String!, $since: DateTime!, $until: DateTime!, $historySince: GitTimestamp!, $historyUntil: GitTimestamp!, $prCursor: String) {
   user(login: $login) {
     login
     name
@@ -127,8 +127,12 @@ query($login: String!, $since: DateTime!, $until: DateTime!, $historySince: GitT
           }
         }
       }
-      pullRequestContributions(first: 100) {
+      pullRequestContributions(first: 100, after: $prCursor) {
         totalCount
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           pullRequest {
             additions
