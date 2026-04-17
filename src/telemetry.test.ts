@@ -1,13 +1,44 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelemetry, classifyError, type TelemetryPayload } from "./telemetry";
+import { sendTelemetry, queueTelemetry, classifyError, type TelemetryPayload } from "./telemetry";
 
 const mockFetch = vi.fn();
+const mockUnref = vi.hoisted(() => vi.fn());
+const mockSpawn = vi.hoisted(() => vi.fn(() => ({ unref: mockUnref })));
+
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+}));
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function makePayload(overrides: Partial<TelemetryPayload> = {}): TelemetryPayload {
+  return {
+    operationId: "test-op-123",
+    command: "merge",
+    stage: "complete",
+    targetHandle: "juan294",
+    sourceHandle: "corp_user",
+    success: true,
+    stats: {
+      commitsTotal: 42,
+      reposContributed: 7,
+      prsMergedCount: 5,
+      activeDays: 180,
+      reviewsSubmittedCount: 3,
+    },
+    timing: {
+      totalMs: 1163,
+      fetchMs: 823,
+      uploadMs: 340,
+    },
+    cliVersion: "0.2.9",
+    ...overrides,
+  };
 }
 
 describe("classifyError", () => {
@@ -61,31 +92,6 @@ describe("sendTelemetry", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  function makePayload(overrides: Partial<TelemetryPayload> = {}): TelemetryPayload {
-    return {
-      operationId: "test-op-123",
-      command: "merge",
-      stage: "complete",
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      success: true,
-      stats: {
-        commitsTotal: 42,
-        reposContributed: 7,
-        prsMergedCount: 5,
-        activeDays: 180,
-        reviewsSubmittedCount: 3,
-      },
-      timing: {
-        totalMs: 1163,
-        fetchMs: 823,
-        uploadMs: 340,
-      },
-      cliVersion: "0.2.9",
-      ...overrides,
-    };
-  }
 
   it("sends POST to /api/telemetry with JSON body", async () => {
     mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
@@ -206,5 +212,30 @@ describe("sendTelemetry", () => {
     await expect(
       sendTelemetry("https://chapa.example.com", makePayload()),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("queueTelemetry", () => {
+  beforeEach(() => {
+    mockSpawn.mockClear();
+    mockUnref.mockClear();
+  });
+
+  it("spawns a detached background request and unreferences it", () => {
+    queueTelemetry("https://chapa.example.com/", makePayload());
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["--input-type=module", "--eval", expect.any(String)]),
+      expect.objectContaining({
+        detached: true,
+        stdio: "ignore",
+        env: expect.objectContaining({
+          CHAPA_BG_TIMEOUT_MS: "5000",
+          CHAPA_BG_URL: "https://chapa.example.com/api/telemetry",
+        }),
+      }),
+    );
+    expect(mockUnref).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,5 +1,6 @@
 import { stripTrailingSlashes } from "./shared.js";
 import { requestJson } from "./http.js";
+import { spawnDetachedPost } from "./background.js";
 
 export type TelemetryCommand = "login" | "merge" | "insights";
 export type TelemetryStage = "auth" | "fetch" | "parse" | "upload" | "complete";
@@ -68,4 +69,14 @@ export async function sendTelemetry(
   } catch {
     // Intentionally swallowed — telemetry must never block or fail the CLI
   }
+}
+
+export function queueTelemetry(serverUrl: string, payload: TelemetryPayload): void {
+  const baseUrl = stripTrailingSlashes(serverUrl);
+
+  spawnDetachedPost({
+    url: `${baseUrl}/api/telemetry`,
+    timeoutMs: 5000,
+    body: payload,
+  });
 }

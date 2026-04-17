@@ -10,7 +10,7 @@ const mockDeleteConfig = vi.hoisted(() => vi.fn());
 const mockLogin = vi.hoisted(() => vi.fn());
 const mockCreateLogger = vi.hoisted(() => vi.fn());
 const mockFormatStatsSummary = vi.hoisted(() => vi.fn());
-const mockSendTelemetry = vi.hoisted(() => vi.fn());
+const mockQueueTelemetry = vi.hoisted(() => vi.fn());
 const mockClassifyError = vi.hoisted(() => vi.fn());
 const mockEmptyTelemetryStats = vi.hoisted(() => ({
   commitsTotal: 0,
@@ -21,7 +21,7 @@ const mockEmptyTelemetryStats = vi.hoisted(() => ({
 }));
 const mockParseInsightsHtml = vi.hoisted(() => vi.fn());
 const mockUploadInsights = vi.hoisted(() => vi.fn());
-const mockTriggerRecalculate = vi.hoisted(() => vi.fn());
+const mockQueueRecalculate = vi.hoisted(() => vi.fn());
 const mockInsightsModuleImported = vi.hoisted(() => vi.fn());
 const mockReadFileSync = vi.hoisted(() => vi.fn());
 const mockResolve = vi.hoisted(() => vi.fn());
@@ -39,9 +39,9 @@ vi.mock("./insights.js", () => ({
     mockInsightsModuleImported();
     return mockUploadInsights;
   },
-  get triggerRecalculate() {
+  get queueRecalculate() {
     mockInsightsModuleImported();
-    return mockTriggerRecalculate;
+    return mockQueueRecalculate;
   },
 }));
 vi.mock("./config.js", () => ({
@@ -52,7 +52,7 @@ vi.mock("./login.js", () => ({ login: mockLogin }));
 vi.mock("./logger.js", () => ({ createLogger: mockCreateLogger }));
 vi.mock("./shared.js", () => ({ formatStatsSummary: mockFormatStatsSummary }));
 vi.mock("./telemetry.js", () => ({
-  sendTelemetry: mockSendTelemetry,
+  queueTelemetry: mockQueueTelemetry,
   classifyError: mockClassifyError,
   EMPTY_TELEMETRY_STATS: mockEmptyTelemetryStats,
 }));
@@ -208,7 +208,7 @@ describe("index.ts command dispatch", () => {
     mockLogin.mockResolvedValue(undefined);
     mockDeleteConfig.mockReturnValue(false);
     mockFormatStatsSummary.mockReturnValue("  Commits:  42\n  PRs merged:  5");
-    mockSendTelemetry.mockResolvedValue(undefined);
+    mockQueueTelemetry.mockResolvedValue(undefined);
     mockClassifyError.mockReturnValue("unknown");
     mockParseInsightsHtml.mockReturnValue({
       tool: "claude-code",
@@ -226,7 +226,7 @@ describe("index.ts command dispatch", () => {
       toolErrors: {},
     });
     mockUploadInsights.mockResolvedValue({ success: false, error: "mock" });
-    mockTriggerRecalculate.mockResolvedValue(undefined);
+    mockQueueRecalculate.mockResolvedValue(undefined);
     mockReadFileSync.mockReturnValue("<html></html>");
     mockResolve.mockImplementation((p: string) => `/resolved/${p}`);
   });
@@ -373,7 +373,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       "https://chapa.thecreativetoken.com",
       expect.objectContaining({
         command: "login",
@@ -425,7 +425,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       "https://chapa.thecreativetoken.com",
       expect.objectContaining({
         command: "login",
@@ -616,7 +616,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         command: "merge",
@@ -629,7 +629,7 @@ describe("index.ts command dispatch", () => {
         timing: expect.objectContaining({ uploadMs: 0 }),
       }),
     );
-    expect(mockSendTelemetry).toHaveBeenCalledTimes(1);
+    expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
     expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
   });
 
@@ -689,7 +689,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         command: "merge",
@@ -700,7 +700,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "corp_user",
       }),
     );
-    expect(mockSendTelemetry).toHaveBeenCalledTimes(1);
+    expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
   });
 
   // ── merge: happy path ────────────────────────────────────────────────
@@ -815,7 +815,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         command: "merge",
@@ -828,7 +828,7 @@ describe("index.ts command dispatch", () => {
         cliVersion: expect.any(String),
       }),
     );
-    expect(mockSendTelemetry).toHaveBeenCalledTimes(1);
+    expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
   });
 
   // ── merge: --json output ─────────────────────────────────────────────
@@ -1145,7 +1145,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         command: "insights",
@@ -1191,7 +1191,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         command: "insights",
@@ -1270,7 +1270,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockTriggerRecalculate).toHaveBeenCalled();
+    expect(mockQueueRecalculate).toHaveBeenCalled();
   });
 
   it("sends telemetry on successful insights upload", async () => {
@@ -1290,7 +1290,7 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(mockSendTelemetry).toHaveBeenCalledWith(
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
         command: "insights",

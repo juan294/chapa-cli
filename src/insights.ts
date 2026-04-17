@@ -2,6 +2,7 @@ import { parseHTML } from "linkedom";
 import type { InsightsUpload } from "./shared.js";
 import { stripTrailingSlashes } from "./shared.js";
 import { requestJson } from "./http.js";
+import { spawnDetachedPost } from "./background.js";
 
 interface ChartCards {
   toolUsage: Element | null;
@@ -400,6 +401,16 @@ export async function triggerRecalculate(
   } catch {
     logger?.debug("Recalculate request failed — score will update on next view.");
   }
+}
+
+export function queueRecalculate(serverUrl: string, token: string): void {
+  const baseUrl = stripTrailingSlashes(serverUrl);
+
+  spawnDetachedPost({
+    url: `${baseUrl}/api/recalculate`,
+    timeoutMs: 30_000,
+    token,
+  });
 }
 
 // Export helpers for isolated testing
