@@ -37,17 +37,31 @@ interface LoginOptions {
   _waitForEnter?: () => Promise<void>;
 }
 
+interface BrowserLaunchSpec {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
+
+export function getBrowserLaunchSpec(url: string, platform = process.platform): BrowserLaunchSpec {
+  if (platform === "darwin") {
+    return { command: "open", args: [url], shell: false };
+  }
+
+  if (platform === "win32") {
+    return {
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", url],
+      shell: false,
+    };
+  }
+
+  return { command: "xdg-open", args: [url], shell: false };
+}
+
 function openBrowser(url: string): void {
-  const cmd = process.platform === "darwin"
-    ? "open"
-    : process.platform === "win32"
-      ? "start"
-      : "xdg-open";
-
-  // Windows 'start' treats the first quoted arg as a window title
-  const args = process.platform === "win32" ? ["", url] : [url];
-
-  const child = spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  const spec = getBrowserLaunchSpec(url);
+  const child = spawn(spec.command, spec.args, { stdio: "ignore", shell: spec.shell });
   child.unref();
 }
 

@@ -4,6 +4,7 @@ import {
   buildStatsFromRaw,
   formatStatsSummary,
   stripTrailingSlashes,
+  normalizeErrorCauseChain,
   getRootErrorMessage,
   getFullErrorChain,
   extractErrorDetail,
@@ -807,6 +808,34 @@ describe("stripTrailingSlashes", () => {
 
   it("handles a string that is just slashes", () => {
     expect(stripTrailingSlashes("///")).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeErrorCauseChain
+// ---------------------------------------------------------------------------
+
+describe("normalizeErrorCauseChain", () => {
+  it("collects root, detail, and chain from nested errors", () => {
+    const root = Object.assign(new Error("certificate failed"), {
+      code: "SELF_SIGNED_CERT_IN_CHAIN",
+    });
+    const mid = new Error("fetch failed", { cause: root });
+    const top = new Error("request failed", { cause: mid });
+
+    expect(normalizeErrorCauseChain(top)).toEqual({
+      rootMessage: "certificate failed",
+      detail: "request failed → fetch failed → certificate failed",
+      chain: "request failed | fetch failed | certificate failed | SELF_SIGNED_CERT_IN_CHAIN",
+    });
+  });
+
+  it("returns empty fields for non-Error input", () => {
+    expect(normalizeErrorCauseChain("not an error")).toEqual({
+      rootMessage: "",
+      detail: "",
+      chain: "",
+    });
   });
 });
 
