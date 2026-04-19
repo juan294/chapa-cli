@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-04-18
+
 ### Added
 
 - Shared request transport in `src/http.ts` with normalized timeout,
   HTTP, network, and parse failure handling
+- Non-blocking background dispatch module (`src/background.ts`) for
+  fire-and-forget telemetry and badge recalculate calls
+- `command` and `stage` context fields in telemetry payloads for
+  richer operation tracking
 
 ### Changed
 
@@ -22,19 +28,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and expired-session errors instead of exiting directly
 - Lazy-load the `insights` command path so non-insights commands
   do not eagerly load the `linkedom` parser bundle
+- Cache chart card parsing in insights to avoid redundant DOM traversal
 
 ### Fixed
 
+- EMU PR aggregation now paginates across all pages — previously only
+  the first page of pull requests was counted (#55, #61)
+- Enforce upload write response contract — validate server write
+  acknowledgements instead of assuming success (#56, #57, #59)
+- Handle server routing and config errors gracefully with clear user
+  messages instead of unhandled rejections (#53, #62, #64)
+- Normalize browser launch and network error reporting across login
+  and transport flows (#71, #72)
 - Normalize network error reporting across merge, login, insights,
   upload, and telemetry flows
 - Bound user-facing network calls with consistent request timeouts
   instead of allowing indefinite hangs
+- Patch vite transitive dependency to 7.3.2 (security)
 
 ### Documentation
 
 - Refresh architecture docs and diagrams for the shared transport
   layer and lazy-loaded insights module
-- Update supported-version and example CLI version references to `0.4.0`
+- Update supported-version and example CLI version references to `0.4.1`
+
+### Infrastructure
+
+- Gate automated npm publish to releases targeting `main` with
+  verified provenance (#54)
 
 ## [0.4.0] - 2026-03-23
 
