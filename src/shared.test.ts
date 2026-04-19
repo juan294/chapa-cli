@@ -4,6 +4,7 @@ import {
   buildStatsFromRaw,
   formatStatsSummary,
   stripTrailingSlashes,
+  normalizeErrorCauseChain,
   getRootErrorMessage,
   getFullErrorChain,
   extractErrorDetail,
@@ -621,6 +622,7 @@ describe("CONTRIBUTION_QUERY", () => {
     expect(CONTRIBUTION_QUERY).toContain("$until: DateTime!");
     expect(CONTRIBUTION_QUERY).toContain("$historySince: GitTimestamp!");
     expect(CONTRIBUTION_QUERY).toContain("$historyUntil: GitTimestamp!");
+    expect(CONTRIBUTION_QUERY).toContain("$prCursor: String");
   });
 
   it("queries user by login", () => {
@@ -636,10 +638,14 @@ describe("CONTRIBUTION_QUERY", () => {
 
   it("requests pull request contribution data", () => {
     expect(CONTRIBUTION_QUERY).toContain("pullRequestContributions");
+    expect(CONTRIBUTION_QUERY).toContain("after: $prCursor");
     expect(CONTRIBUTION_QUERY).toContain("additions");
     expect(CONTRIBUTION_QUERY).toContain("deletions");
     expect(CONTRIBUTION_QUERY).toContain("changedFiles");
     expect(CONTRIBUTION_QUERY).toContain("merged");
+    expect(CONTRIBUTION_QUERY).toContain("pageInfo");
+    expect(CONTRIBUTION_QUERY).toContain("hasNextPage");
+    expect(CONTRIBUTION_QUERY).toContain("endCursor");
   });
 
   it("requests review and issue contribution counts", () => {
@@ -802,6 +808,34 @@ describe("stripTrailingSlashes", () => {
 
   it("handles a string that is just slashes", () => {
     expect(stripTrailingSlashes("///")).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeErrorCauseChain
+// ---------------------------------------------------------------------------
+
+describe("normalizeErrorCauseChain", () => {
+  it("collects root, detail, and chain from nested errors", () => {
+    const root = Object.assign(new Error("certificate failed"), {
+      code: "SELF_SIGNED_CERT_IN_CHAIN",
+    });
+    const mid = new Error("fetch failed", { cause: root });
+    const top = new Error("request failed", { cause: mid });
+
+    expect(normalizeErrorCauseChain(top)).toEqual({
+      rootMessage: "certificate failed",
+      detail: "request failed → fetch failed → certificate failed",
+      chain: "request failed | fetch failed | certificate failed | SELF_SIGNED_CERT_IN_CHAIN",
+    });
+  });
+
+  it("returns empty fields for non-Error input", () => {
+    expect(normalizeErrorCauseChain("not an error")).toEqual({
+      rootMessage: "",
+      detail: "",
+      chain: "",
+    });
   });
 });
 

@@ -1,22 +1,80 @@
 import { parseHTML } from "linkedom";
 import type { InsightsUpload } from "./shared.js";
 import { stripTrailingSlashes } from "./shared.js";
+import { requestJson } from "./http.js";
+import { spawnDetachedPost } from "./background.js";
 
-function findChartCard(doc: Document, titlePrefix: string): Element | null {
-  const cards = doc.querySelectorAll(".chart-card");
-  for (const card of cards) {
-    const title = card.querySelector(".chart-title")?.textContent?.trim() ?? "";
-    if (title.startsWith(titlePrefix)) return card;
-  }
-  return null;
+interface ChartCards {
+  toolUsage: Element | null;
+  sessionTypes: Element | null;
+  outcomes: Element | null;
+  friction: Element | null;
+  satisfaction: Element | null;
+  toolErrors: Element | null;
+  multiClauding: Element | null;
+  responseTime: Element | null;
 }
 
-function extractBarChart(
-  doc: Document,
-  chartTitle: string,
-): Record<string, number> {
+function collectChartCards(doc: Document): ChartCards {
+  const cards: ChartCards = {
+    toolUsage: null,
+    sessionTypes: null,
+    outcomes: null,
+    friction: null,
+    satisfaction: null,
+    toolErrors: null,
+    multiClauding: null,
+    responseTime: null,
+  };
+
+  for (const card of doc.querySelectorAll(".chart-card")) {
+    const title = card.querySelector(".chart-title")?.textContent?.trim() ?? "";
+
+    if (!cards.toolUsage && title.startsWith("Top Tools Used")) {
+      cards.toolUsage = card;
+      continue;
+    }
+
+    if (!cards.sessionTypes && title.startsWith("Session Types")) {
+      cards.sessionTypes = card;
+      continue;
+    }
+
+    if (!cards.outcomes && title.startsWith("Outcomes")) {
+      cards.outcomes = card;
+      continue;
+    }
+
+    if (!cards.friction && title.startsWith("Primary Friction Types")) {
+      cards.friction = card;
+      continue;
+    }
+
+    if (!cards.satisfaction && title.startsWith("Inferred Satisfaction")) {
+      cards.satisfaction = card;
+      continue;
+    }
+
+    if (!cards.toolErrors && title.startsWith("Tool Errors Encountered")) {
+      cards.toolErrors = card;
+      continue;
+    }
+
+    if (!cards.multiClauding && title.startsWith("Multi-Clauding")) {
+      cards.multiClauding = card;
+      continue;
+    }
+
+    if (!cards.responseTime && title.startsWith("User Response Time")) {
+      cards.responseTime = card;
+    }
+  }
+
+  return cards;
+}
+
+function extractBarChart(card: Element | null): Record<string, number> {
   const result: Record<string, number> = {};
-  const card = findChartCard(doc, chartTitle);
   if (!card) return result;
 
   const rows = card.querySelectorAll(".bar-row");
@@ -112,13 +170,12 @@ function extractVolumeStats(doc: Document): {
   return result;
 }
 
-function parseMultiClauding(doc: Document): {
+function parseMultiClauding(card: Element | null): {
   overlapEvents: number;
   sessionsInvolved: number;
   messagePercent: number;
 } {
   const result = { overlapEvents: 0, sessionsInvolved: 0, messagePercent: 0 };
-  const card = findChartCard(doc, "Multi-Clauding");
   if (!card) return result;
 
   const statDivs = card.querySelectorAll("div[style]");
@@ -146,12 +203,11 @@ function parseMultiClauding(doc: Document): {
   return result;
 }
 
-function parseResponseTime(doc: Document): {
+function parseResponseTime(card: Element | null): {
   medianSeconds: number;
   averageSeconds: number;
 } {
   const result = { medianSeconds: 0, averageSeconds: 0 };
-  const card = findChartCard(doc, "User Response Time");
   if (!card) return result;
 
   const text = card.textContent ?? "";
@@ -163,7 +219,6 @@ function parseResponseTime(doc: Document): {
 
   return result;
 }
-
 function mapOutcomes(chart: Record<string, number>): {
   fullyAchieved: number;
   mostlyAchieved: number;
@@ -211,14 +266,8 @@ export function parseInsightsHtml(html: string): InsightsUpload {
     volume.messages = subtitle.messages;
   }
 
-  const toolUsage = extractBarChart(doc, "Top Tools Used");
-  const sessionTypes = extractBarChart(doc, "Session Types");
-  const outcomesChart = extractBarChart(doc, "Outcomes");
-  const frictionChart = extractBarChart(doc, "Primary Friction Types");
-  const satisfactionChart = extractBarChart(doc, "Inferred Satisfaction");
-  const toolErrors = extractBarChart(doc, "Tool Errors Encountered");
-  const multiClauding = parseMultiClauding(doc);
-  const responseTime = parseResponseTime(doc);
+  const cards = collectChartCards(doc);
+  const toolUsage = extractBarChart(cards.toolUsage);
   const totalToolCalls = Object.values(toolUsage).reduce((a, b) => a + b, 0);
 
   return {
@@ -236,13 +285,13 @@ export function parseInsightsHtml(html: string): InsightsUpload {
       msgsPerDay: volume.msgsPerDay,
     },
     toolUsage,
-    sessionTypes,
-    outcomes: mapOutcomes(outcomesChart),
-    friction: mapFriction(frictionChart),
-    satisfaction: mapSatisfaction(satisfactionChart),
-    multiClauding,
-    responseTime,
-    toolErrors,
+    sessionTypes: extractBarChart(cards.sessionTypes),
+    outcomes: mapOutcomes(extractBarChart(cards.outcomes)),
+    friction: mapFriction(extractBarChart(cards.friction)),
+    satisfaction: mapSatisfaction(extractBarChart(cards.satisfaction)),
+    multiClauding: parseMultiClauding(cards.multiClauding),
+    responseTime: parseResponseTime(cards.responseTime),
+    toolErrors: extractBarChart(cards.toolErrors),
     totalSessions: subtitle.sessions,
     totalToolCalls,
   };
@@ -252,14 +301,14 @@ export function parseInsightsHtml(html: string): InsightsUpload {
 
 import type { Logger } from "./logger.js";
 
-export interface InsightsUploadOptions {
+interface InsightsUploadOptions {
   data: InsightsUpload;
   token: string;
   serverUrl: string;
   logger?: Logger;
 }
 
-export interface InsightsUploadResult {
+interface InsightsUploadResult {
   success: boolean;
   error?: string;
   craftScore?: {
@@ -276,29 +325,45 @@ export async function uploadInsights(
   const baseUrl = stripTrailingSlashes(opts.serverUrl);
   const url = `${baseUrl}/api/insights`;
   const log = opts.logger;
-
   const payload = JSON.stringify(opts.data);
   log?.debug(`Insights payload size: ${payload.length} bytes`);
 
   try {
-    const res = await fetch(url, {
+    const res = await requestJson<{
+      craftScore?: InsightsUploadResult["craftScore"];
+    }>({
+      url,
       method: "POST",
+      token: opts.token,
+      timeoutMs: 30_000,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${opts.token}`,
       },
       body: payload,
     });
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
+      if (res.category !== "http") {
+        return {
+          success: false,
+          error: `Upload failed: ${res.message}`,
+        };
+      }
+
+      const body = typeof res.body === "object" && res.body !== null
+        ? res.body as Record<string, unknown>
+        : {};
+      const reason =
+        typeof body.error === "string" ? body.error
+          : typeof body.reason === "string" ? body.reason
+            : "Unknown error";
       return {
         success: false,
-        error: `Server returned ${res.status}: ${body.error ?? body.reason ?? "Unknown error"}`,
+        error: `Server returned ${res.status ?? "unknown"}: ${reason}`,
       };
     }
 
-    const body = await res.json().catch(() => ({}));
+    const body = res.data;
     log?.debug(`Server response: ${JSON.stringify(body)}`);
     return {
       success: true,
@@ -321,12 +386,12 @@ export async function triggerRecalculate(
   const url = `${baseUrl}/api/recalculate`;
 
   try {
-    const res = await fetch(url, {
+    const res = await requestJson<Record<string, never>>({
+      url,
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      token,
+      timeoutMs: 30_000,
+      fallbackData: {},
     });
     if (res.ok) {
       logger?.debug("Impact score recalculated.");
@@ -336,6 +401,16 @@ export async function triggerRecalculate(
   } catch {
     logger?.debug("Recalculate request failed — score will update on next view.");
   }
+}
+
+export function queueRecalculate(serverUrl: string, token: string): void {
+  const baseUrl = stripTrailingSlashes(serverUrl);
+
+  spawnDetachedPost({
+    url: `${baseUrl}/api/recalculate`,
+    timeoutMs: 30_000,
+    token,
+  });
 }
 
 // Export helpers for isolated testing

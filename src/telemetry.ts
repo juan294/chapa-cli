@@ -1,30 +1,50 @@
 import { stripTrailingSlashes } from "./shared.js";
+import { requestJson } from "./http.js";
+import { spawnDetachedPost } from "./background.js";
+
+export type TelemetryCommand = "login" | "merge" | "insights";
+export type TelemetryStage = "auth" | "fetch" | "parse" | "upload" | "complete";
+export type TelemetryErrorCategory = "auth" | "network" | "graphql" | "server" | "unknown";
+
+export interface TelemetryStats {
+  commitsTotal: number;
+  reposContributed: number;
+  prsMergedCount: number;
+  activeDays: number;
+  reviewsSubmittedCount: number;
+}
 
 export interface TelemetryPayload {
   operationId: string;
-  targetHandle: string;
-  sourceHandle: string;
+  command: TelemetryCommand;
+  stage: TelemetryStage;
+  targetHandle?: string;
+  sourceHandle?: string;
   success: boolean;
-  errorCategory?: "auth" | "network" | "graphql" | "server" | "unknown";
-  stats: {
-    commitsTotal: number;
-    reposContributed: number;
-    prsMergedCount: number;
-    activeDays: number;
-    reviewsSubmittedCount: number;
-  };
+  errorCategory?: TelemetryErrorCategory;
+  stats: TelemetryStats;
   timing: {
-    fetchMs: number;
-    uploadMs: number;
     totalMs: number;
+    authMs?: number;
+    fetchMs?: number;
+    parseMs?: number;
+    uploadMs?: number;
   };
   cliVersion: string;
 }
 
+export const EMPTY_TELEMETRY_STATS: TelemetryStats = {
+  commitsTotal: 0,
+  reposContributed: 0,
+  prsMergedCount: 0,
+  activeDays: 0,
+  reviewsSubmittedCount: 0,
+};
+
 /** Classify an error message into a category for dashboarding. */
-export function classifyError(message: string): TelemetryPayload["errorCategory"] {
+export function classifyError(message: string): TelemetryErrorCategory {
   if (/\b40[13]\b/.test(message)) return "auth";
-  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|DNS/i.test(message)) return "network";
+  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|DNS|timed out/i.test(message)) return "network";
   if (/graphql/i.test(message)) return "graphql";
   if (/\b5\d{2}\b/.test(message)) return "server";
   return "unknown";
@@ -39,13 +59,24 @@ export async function sendTelemetry(
   const url = `${baseUrl}/api/telemetry`;
 
   try {
-    await fetch(url, {
+    await requestJson<Record<string, never>>({
+      url,
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(5000),
+      timeoutMs: 5000,
+      body: payload,
+      fallbackData: {},
     });
   } catch {
     // Intentionally swallowed — telemetry must never block or fail the CLI
   }
+}
+
+export function queueTelemetry(serverUrl: string, payload: TelemetryPayload): void {
+  const baseUrl = stripTrailingSlashes(serverUrl);
+
+  spawnDetachedPost({
+    url: `${baseUrl}/api/telemetry`,
+    timeoutMs: 5000,
+    body: payload,
+  });
 }

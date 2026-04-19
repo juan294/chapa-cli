@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseInsightsHtml,
+  queueRecalculate,
   uploadInsights,
   triggerRecalculate,
   _parseNumeric,
@@ -10,6 +11,13 @@ import {
   _parseLinesStat,
 } from "./insights.js";
 import type { InsightsUpload } from "./shared.js";
+
+const mockUnref = vi.hoisted(() => vi.fn());
+const mockSpawn = vi.hoisted(() => vi.fn(() => ({ unref: mockUnref })));
+
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+}));
 
 const FIXTURE_HTML = readFileSync(
   join(import.meta.dirname, "__fixtures__", "claude-code-report.html"),
@@ -212,6 +220,31 @@ describe("parseInsightsHtml", () => {
     });
   });
 
+  it("uses the first matching chart card for prefixed titles", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Top Tools Used</div>
+        <div class="bar-row">
+          <span class="bar-label">Read</span>
+          <span class="bar-value">5</span>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Top Tools Used (secondary)</div>
+        <div class="bar-row">
+          <span class="bar-label">Read</span>
+          <span class="bar-value">99</span>
+        </div>
+      </div>
+    </body></html>`;
+
+    const result = parseInsightsHtml(html);
+
+    expect(result.toolUsage).toEqual({ Read: 5 });
+    expect(result.totalToolCalls).toBe(5);
+  });
+
   it("returns all 14 top-level fields", () => {
     const result = parseInsightsHtml(FIXTURE_HTML);
     const keys = Object.keys(result);
@@ -237,15 +270,21 @@ function makeInsightsData(): InsightsUpload {
   return parseInsightsHtml(FIXTURE_HTML);
 }
 
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("uploadInsights", () => {
   const mockFetch = vi.fn();
   beforeEach(() => { vi.stubGlobal("fetch", mockFetch); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("sends POST with Bearer auth and JSON body", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    mockFetch.mockResolvedValue(
+      jsonResponse({
         success: true,
         craftScore: {
           craftScore: 72,
@@ -254,7 +293,7 @@ describe("uploadInsights", () => {
           reportPeriod: { start: "2026-02-20", end: "2026-03-07" },
         },
       }),
-    });
+    );
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "test-token",
@@ -276,10 +315,7 @@ describe("uploadInsights", () => {
   });
 
   it("strips trailing slash from server URL", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ success: true, craftScore: {} }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ success: true, craftScore: {} }));
     await uploadInsights({
       data: makeInsightsData(),
       token: "t",
@@ -292,11 +328,7 @@ describe("uploadInsights", () => {
   });
 
   it("returns error on HTTP 401", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: "Authentication required" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Authentication required" }, 401));
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "bad",
@@ -308,11 +340,9 @@ describe("uploadInsights", () => {
   });
 
   it("returns error on HTTP 400 with validation reason", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: "Invalid insights data", reason: "totalSessions must be >= 1" }),
-    });
+    mockFetch.mockResolvedValue(
+      jsonResponse({ error: "Invalid insights data", reason: "totalSessions must be >= 1" }, 400),
+    );
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "t",
@@ -334,11 +364,7 @@ describe("uploadInsights", () => {
   });
 
   it("returns error on rate limit (429)", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 429,
-      json: async () => ({ error: "Too many uploads" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Too many uploads" }, 429));
     const result = await uploadInsights({
       data: makeInsightsData(),
       token: "t",
@@ -346,6 +372,21 @@ describe("uploadInsights", () => {
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain("429");
+  });
+
+  it("returns normalized timeout errors", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "t",
+      serverUrl: "https://x.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Request timed out after 30000ms");
   });
 });
 
@@ -355,7 +396,7 @@ describe("triggerRecalculate", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("sends POST to /api/recalculate with Bearer auth", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
     await triggerRecalculate("https://chapa.example.com", "token");
     expect(mockFetch).toHaveBeenCalledWith(
       "https://chapa.example.com/api/recalculate",
@@ -374,7 +415,33 @@ describe("triggerRecalculate", () => {
   });
 
   it("does not throw on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "nope" }, 500));
     await expect(triggerRecalculate("https://x.com", "t")).resolves.toBeUndefined();
+  });
+});
+
+describe("queueRecalculate", () => {
+  beforeEach(() => {
+    mockSpawn.mockClear();
+    mockUnref.mockClear();
+  });
+
+  it("spawns a detached recalculate request and unreferences it", () => {
+    queueRecalculate("https://chapa.example.com/", "token");
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["--input-type=module", "--eval", expect.any(String)]),
+      expect.objectContaining({
+        detached: true,
+        stdio: "ignore",
+        env: expect.objectContaining({
+          CHAPA_BG_TIMEOUT_MS: "30000",
+          CHAPA_BG_TOKEN: "token",
+          CHAPA_BG_URL: "https://chapa.example.com/api/recalculate",
+        }),
+      }),
+    );
+    expect(mockUnref).toHaveBeenCalledTimes(1);
   });
 });

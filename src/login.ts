@@ -11,7 +11,10 @@ import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { saveConfig } from "./config.js";
-import { stripTrailingSlashes, getRootErrorMessage, getFullErrorChain } from "./shared.js";
+import { DEFAULT_SERVER } from "./cli.js";
+import { stripTrailingSlashes } from "./shared.js";
+import type { RequestFailure } from "./http.js";
+import { requestJson } from "./http.js";
 
 export const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 150; // 5 minutes at 2s intervals
@@ -34,21 +37,35 @@ interface LoginOptions {
   _waitForEnter?: () => Promise<void>;
 }
 
-export function openBrowser(url: string): void {
-  const cmd = process.platform === "darwin"
-    ? "open"
-    : process.platform === "win32"
-      ? "start"
-      : "xdg-open";
+interface BrowserLaunchSpec {
+  command: string;
+  args: string[];
+  shell: boolean;
+}
 
-  // Windows 'start' treats the first quoted arg as a window title
-  const args = process.platform === "win32" ? ["", url] : [url];
+export function getBrowserLaunchSpec(url: string, platform = process.platform): BrowserLaunchSpec {
+  if (platform === "darwin") {
+    return { command: "open", args: [url], shell: false };
+  }
 
-  const child = spawn(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
+  if (platform === "win32") {
+    return {
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", url],
+      shell: false,
+    };
+  }
+
+  return { command: "xdg-open", args: [url], shell: false };
+}
+
+function openBrowser(url: string): void {
+  const spec = getBrowserLaunchSpec(url);
+  const child = spawn(spec.command, spec.args, { stdio: "ignore", shell: spec.shell });
   child.unref();
 }
 
-export function waitForEnter(): Promise<void> {
+function waitForEnter(): Promise<void> {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     rl.on("close", () => resolve());
@@ -75,6 +92,36 @@ const TLS_ERROR_PATTERNS = [
 
 function isTlsError(message: string): boolean {
   return TLS_ERROR_PATTERNS.some((p) => message.includes(p));
+}
+
+function handlePollFailure(
+  failure: RequestFailure,
+  attempt: number,
+  verbose: boolean,
+  insecure: boolean,
+  serverErrorLogged: boolean,
+): boolean {
+  if (failure.category === "http") {
+    if (verbose) {
+      console.error(`[poll ${attempt}] HTTP ${failure.status}`);
+    } else if (!serverErrorLogged) {
+      console.error(`\nServer returned ${failure.status}. Retrying...`);
+      return true;
+    }
+
+    return serverErrorLogged;
+  }
+
+  if (verbose) {
+    console.error(`[poll ${attempt}] network error: ${failure.message}`);
+  }
+  if (!insecure && failure.chain && isTlsError(failure.chain)) {
+    console.error(`\nTLS certificate error: ${failure.detail ?? failure.message}`);
+    console.error("This looks like a corporate network with TLS interception.");
+    console.error("  try: chapa login --insecure\n");
+  }
+
+  return serverErrorLogged;
 }
 
 export async function login(serverUrl: string, opts: LoginOptions = {}): Promise<void> {
@@ -109,32 +156,22 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
 
     let data: PollResponse | null = null;
     try {
-      const res = await fetch(
-        `${baseUrl}/api/cli/auth/poll?session=${sessionId}`,
-      );
+      const res = await requestJson<PollResponse>({
+        url: `${baseUrl}/api/cli/auth/poll?session=${sessionId}`,
+        timeoutMs: 10_000,
+      });
       if (!res.ok) {
-        if (verbose) {
-          console.error(`[poll ${i + 1}] HTTP ${res.status}`);
-        } else if (!serverErrorLogged) {
-          console.error(`\nServer returned ${res.status}. Retrying...`);
-          serverErrorLogged = true;
-        }
+        serverErrorLogged = handlePollFailure(res, i + 1, verbose, insecure, serverErrorLogged);
         continue;
       }
-      data = await res.json();
+      data = res.data;
       if (verbose) {
         console.error(`[poll ${i + 1}] ${data?.status ?? "no status"}`);
       }
     } catch (err) {
-      const rootMsg = getRootErrorMessage(err);
-      const fullChain = getFullErrorChain(err);
+      const rootMsg = err instanceof Error ? err.message : String(err);
       if (verbose) {
         console.error(`[poll ${i + 1}] network error: ${rootMsg}`);
-      }
-      if (!insecure && isTlsError(fullChain)) {
-        console.error(`\nTLS certificate error: ${rootMsg}`);
-        console.error("This looks like a corporate network with TLS interception.");
-        console.error("  try: chapa login --insecure\n");
       }
       continue;
     }
@@ -147,15 +184,18 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
       });
       console.log(`\nLogged in as ${data.handle}!`);
       console.log("Credentials saved to ~/.chapa/credentials.json");
+      if (baseUrl !== DEFAULT_SERVER) {
+        console.log(`Future merge and insights commands will reuse ${baseUrl} until you override it with --server.`);
+      }
       return;
     }
 
     if (data?.status === "expired") {
       console.error("\nSession expired. Please try again.");
-      process.exit(1);
+      throw new Error("Session expired. Please try again.");
     }
   }
 
   console.error("\nTimed out waiting for approval. Please try again.");
-  process.exit(1);
+  throw new Error("Timed out waiting for approval. Please try again.");
 }

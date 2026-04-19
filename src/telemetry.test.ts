@@ -1,7 +1,45 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelemetry, classifyError, type TelemetryPayload } from "./telemetry";
+import { sendTelemetry, queueTelemetry, classifyError, type TelemetryPayload } from "./telemetry";
 
 const mockFetch = vi.fn();
+const mockUnref = vi.hoisted(() => vi.fn());
+const mockSpawn = vi.hoisted(() => vi.fn(() => ({ unref: mockUnref })));
+
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+}));
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function makePayload(overrides: Partial<TelemetryPayload> = {}): TelemetryPayload {
+  return {
+    operationId: "test-op-123",
+    command: "merge",
+    stage: "complete",
+    targetHandle: "juan294",
+    sourceHandle: "corp_user",
+    success: true,
+    stats: {
+      commitsTotal: 42,
+      reposContributed: 7,
+      prsMergedCount: 5,
+      activeDays: 180,
+      reviewsSubmittedCount: 3,
+    },
+    timing: {
+      totalMs: 1163,
+      fetchMs: 823,
+      uploadMs: 340,
+    },
+    cliVersion: "0.2.9",
+    ...overrides,
+  };
+}
 
 describe("classifyError", () => {
   it("classifies 401 as auth", () => {
@@ -18,6 +56,10 @@ describe("classifyError", () => {
 
   it("classifies ETIMEDOUT as network", () => {
     expect(classifyError("ETIMEDOUT")).toBe("network");
+  });
+
+  it("classifies normalized timeout messages as network", () => {
+    expect(classifyError("Upload failed: Request timed out after 30000ms")).toBe("network");
   });
 
   it("classifies DNS errors as network", () => {
@@ -51,31 +93,8 @@ describe("sendTelemetry", () => {
     vi.restoreAllMocks();
   });
 
-  function makePayload(overrides: Partial<TelemetryPayload> = {}): TelemetryPayload {
-    return {
-      operationId: "test-op-123",
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      success: true,
-      stats: {
-        commitsTotal: 42,
-        reposContributed: 7,
-        prsMergedCount: 5,
-        activeDays: 180,
-        reviewsSubmittedCount: 3,
-      },
-      timing: {
-        fetchMs: 823,
-        uploadMs: 340,
-        totalMs: 1163,
-      },
-      cliVersion: "0.2.9",
-      ...overrides,
-    };
-  }
-
   it("sends POST to /api/telemetry with JSON body", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com", makePayload());
 
@@ -89,13 +108,42 @@ describe("sendTelemetry", () => {
     );
 
     const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+    expect(body.command).toBe("merge");
+    expect(body.stage).toBe("complete");
     expect(body.operationId).toBe("test-op-123");
     expect(body.targetHandle).toBe("juan294");
     expect(body.success).toBe(true);
   });
 
+  it("supports login telemetry without merge handles", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
+
+    await sendTelemetry(
+      "https://chapa.example.com",
+      makePayload({
+        command: "login",
+        stage: "auth",
+        targetHandle: undefined,
+        sourceHandle: undefined,
+        success: false,
+        errorCategory: "network",
+        timing: {
+          totalMs: 9000,
+          authMs: 9000,
+        },
+      }),
+    );
+
+    const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body as string);
+    expect(body.command).toBe("login");
+    expect(body.stage).toBe("auth");
+    expect(body.targetHandle).toBeUndefined();
+    expect(body.sourceHandle).toBeUndefined();
+    expect(body.timing.authMs).toBe(9000);
+  });
+
   it("includes AbortSignal with 5s timeout", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com", makePayload());
 
@@ -104,7 +152,7 @@ describe("sendTelemetry", () => {
   });
 
   it("strips trailing slash from server URL", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com/", makePayload());
 
@@ -124,7 +172,7 @@ describe("sendTelemetry", () => {
   });
 
   it("never throws on non-ok response", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500 });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "server" }, 500));
 
     await expect(
       sendTelemetry("https://chapa.example.com", makePayload()),
@@ -132,7 +180,7 @@ describe("sendTelemetry", () => {
   });
 
   it("includes error category when success is false", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry(
       "https://chapa.example.com",
@@ -145,7 +193,7 @@ describe("sendTelemetry", () => {
   });
 
   it("does not include sensitive data (no tokens, no stack traces)", async () => {
-    mockFetch.mockResolvedValue({ ok: true });
+    mockFetch.mockResolvedValue(jsonResponse({ ok: true }));
 
     await sendTelemetry("https://chapa.example.com", makePayload());
 
@@ -154,5 +202,40 @@ describe("sendTelemetry", () => {
     expect(bodyStr).not.toContain("gho_");
     expect(bodyStr).not.toContain("Bearer");
     expect(bodyStr).not.toContain("stack");
+  });
+
+  it("never throws on timeout failures", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    await expect(
+      sendTelemetry("https://chapa.example.com", makePayload()),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("queueTelemetry", () => {
+  beforeEach(() => {
+    mockSpawn.mockClear();
+    mockUnref.mockClear();
+  });
+
+  it("spawns a detached background request and unreferences it", () => {
+    queueTelemetry("https://chapa.example.com/", makePayload());
+
+    expect(mockSpawn).toHaveBeenCalledWith(
+      process.execPath,
+      expect.arrayContaining(["--input-type=module", "--eval", expect.any(String)]),
+      expect.objectContaining({
+        detached: true,
+        stdio: "ignore",
+        env: expect.objectContaining({
+          CHAPA_BG_TIMEOUT_MS: "5000",
+          CHAPA_BG_URL: "https://chapa.example.com/api/telemetry",
+        }),
+      }),
+    );
+    expect(mockUnref).toHaveBeenCalledTimes(1);
   });
 });

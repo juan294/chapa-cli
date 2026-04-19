@@ -10,16 +10,23 @@ chapa-cli is an open-source CLI tool that merges GitHub Enterprise Managed User 
 src/
 ├── index.ts       # CLI entry point, command dispatch, error boundary
 ├── cli.ts         # Argument parsing (Node parseArgs, strict mode)
+├── http.ts        # Shared HTTP transport, timeouts, and request normalization
 ├── shared.ts      # Types, GraphQL query, stats aggregation, shared utilities
 ├── login.ts       # OAuth device flow (browser auto-open)
 ├── fetch-emu.ts   # GitHub GraphQL integration
 ├── upload.ts      # Chapa server upload (merge stats)
-├── insights.ts    # Claude Code HTML report parsing + upload
+├── insights.ts    # Lazy-loaded Claude Code HTML parsing + upload
 ├── config.ts      # Credential storage (~/.chapa/credentials.json)
 ├── auth.ts        # Token resolution
 ├── telemetry.ts   # Fire-and-forget operation telemetry
 └── logger.ts      # Structured logging (verbose/JSON modes)
 ```
+
+`index.ts` eagerly loads the core merge/login path and lazy-loads
+`insights.ts` only when the `insights` command runs. `http.ts`
+centralizes timeout handling, auth/header wiring, and response
+normalization for GitHub fetches, Chapa uploads, login polling,
+insights upload/recalculate, and telemetry.
 
 Six API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, stats upload, insights upload, badge recalculate, and telemetry.
 
@@ -34,7 +41,7 @@ Six API endpoints connect the CLI to the Chapa server: device flow auth, token e
 ## Branching Strategy
 
 - `develop` — default working branch; all feature branches merge here
-- `main` — release branch; publish to npm is done manually with 2FA
+- `main` — release branch; GitHub Releases created from `main` publish to npm automatically, with manual `npm publish --otp=<code>` only as a fallback
 
 ## Deployment
 
@@ -76,15 +83,13 @@ pnpm run typecheck # TypeScript type checking
 pnpm run build     # production build
 ```
 
-### CRITICAL: Run verification commands sequentially, NEVER in parallel
-Never run typecheck, lint, or test as parallel sibling Bash tool calls.
-Chain with `&&` or `;`: `pnpm run typecheck 2>&1; pnpm test 2>&1`
+Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 
 ## Release Process
 
 1. Bump `version` in `package.json` on `develop`
 2. Merge `develop` → `main` via PR
-3. Create a GitHub Release — the `publish.yml` workflow publishes to npm automatically
+3. Create a GitHub Release from a tag/commit on `main` — the `publish.yml` workflow hard-fails unless the release targets `main` and the tagged commit is reachable from `origin/main`, then publishes to npm automatically
 4. If automated publish fails (strict 2FA), publish manually: `npm publish --otp=<code>`
 
 ## Code Style
@@ -133,151 +138,82 @@ claude -p "Read issue #240 and implement the fix with TDD" --allowedTools "Edit,
 
 ## RPI Workflow
 
-This project follows the Research-Plan-Implement (RPI) pattern.
-All significant changes go through four phases:
-1. /research — Understand the codebase as-is
-2. /plan — Create a phased implementation spec
-3. /implement — Execute one phase at a time with review gates
-4. /validate — Verify implementation against the plan
+This project follows Research-Plan-Implement (RPI).
 
-### Context Management
+1. /research -- Understand the codebase as-is
+2. /plan -- Create a phased implementation spec
+3. /implement -- Execute one phase at a time with review gates
+4. /validate -- Verify implementation against the plan
 
-- Each RPI phase should be its own conversation. Don't run research + plan + implement in one session.
-- Use `/clear` between unrelated tasks. Use `/compact` when context is heavy but the task continues.
-- Subagents are context control mechanisms — they search/read in their window and return only distilled results.
-- Research and planning happen on the default branch. Implementation happens in worktrees or feature branches.
-- If research comes back wrong, throw it out and restart with more specific steering.
+Each phase is its own conversation. STOP after each phase.
+Use /clear between tasks, /compact when context is heavy.
 
-### Rules for All Phases
+## Working Patterns
 
-- Read all mentioned files COMPLETELY before doing anything else.
-- Never suggest improvements during research — only document what exists.
-- Every code reference must include file:line.
-- Spawn parallel subagents for independent research tasks.
-- Wait for ALL subagents before synthesizing.
-- Never write documents with placeholder values.
+<examples>
+<example name="push-sequence">
+Commit before pulling -- hook blocks dirty pulls.
 
-### Rules for Implementation
-
-- Follow the atomic loop: implement → review (plan compliance) → fix → approve → `/simplify` (code quality) → verify.
-- Run `/simplify` after reviewer approval — it handles code reuse, quality, and efficiency in one native pass.
-- Check for `[batch-eligible]` phases in the plan — use `/batch` to execute independent phases in parallel.
-- Run ALL automated verification after each phase.
-- STOP after each phase and wait for human confirmation.
-- Never auto-proceed to the next phase.
-- If the plan doesn't match reality, STOP and explain the mismatch.
-
-### Pre-Release Workflow
-
-```
-/pre-launch -> /remediate -> /update-docs -> /release
-```
-
-- `/remediate` -- resolve all pre-launch findings with parallel TDD agents, CI verification
-- `/update-docs` -- refreshes all documentation, diagrams, version references, and inline code docs
-- `/release` -- version bump, CHANGELOG, tag, GitHub release, registry publish advisory
-
-### Testing Philosophy
-
-- Prefer automated verification over manual testing.
-- Manual testing is ONLY for: sudo, hardware, new installs, truly visual-only validation.
-- If you can verify it with a command or tool, do so automatically.
-- Don't use Claude for linting/formatting — use automated tools and hooks instead.
-
-## Agent Operational Rules
-
-### Shell & Tools
-- Chain verification commands sequentially, never as parallel Bash calls
-- In worktrees: prefix every command with `cd /absolute/path && `
-- Never use `~` in file tool paths — use full absolute paths starting with `/`
-- Always pass `{ encoding: 'utf-8' }` to `execSync`/`spawnSync`
-
-### Git Recipes (use these exact sequences — hooks enforce critical steps)
 ```bash
-# Push sequence — ALWAYS commit before pulling (Error #33, hook enforced)
-git add <files> && git commit -m "msg" && git pull --rebase && git push
-
-# First push — set upstream tracking
-git add <files> && git commit -m "msg" && git push -u origin <branch>
-
-# Push with tag — NEVER use --tags (Error #44, hook enforced)
-git push origin main && git push origin v1.0.0
-# Or: git push origin main --follow-tags
-
-# Worktree cleanup
-git worktree remove --force <path>; git branch -D <branch>
+git add src/feature.ts && git commit -m "feat: add feature"
+git pull --rebase && git push
 ```
 
-### Git Operations
-- Run typecheck/lint BEFORE committing (pre-commit hooks run the same checks)
-- Remove worktrees BEFORE merging PRs with `--delete-branch`
-- Never fabricate filesystem paths — use the working directory or discover with `ls`
+</example>
 
-### GitHub CLI
-- Don't guess `gh --json` field names — query available fields first
-- Check CI per-PR with `--json`, not chained human-readable output
-- `review: fail` means "needs approval", NOT a CI failure
+<example name="verification">
+Run checks sequentially, never as parallel tool calls.
 
-### Sub-agents & Agent Teams
-- Verify tool permissions before spawning sub-agents for write operations
-- If a sub-agent fails due to permissions, take over manually immediately
-- Monitor context size when running many parallel agents
-- Agent Teams are enabled via `.claude/settings.json` — use them for complex parallel work
-- When creating a team: break work so each teammate owns different files (avoid conflicts)
-- Teammates don't inherit conversation history — include full context in spawn prompts
-- Use subagents for focused tasks (result is all that matters); use teams for collaborative work requiring discussion
-- **Only the main agent handles git commit/push.** Sub-agents and teammates write changes to their working directories. The main agent reviews the changes, runs tests, and commits centrally. This prevents wrong-branch pushes and merge conflicts from parallel agents.
+```bash
+pnpm run typecheck 2>&1; pnpm run lint 2>&1; pnpm run test 2>&1
+```
 
-## Push Accountability
+</example>
 
-Every push to the development branch requires CI verification. After pushing:
-1. Spawn a background agent to monitor CI: `gh run list --branch develop --limit 1`
-2. If CI passes — log and move on
-3. If CI fails — background agent investigates with `gh run view <id> --log-failed`, fixes, and re-pushes
-4. Main terminal continues working — push verification is non-blocking
-5. Never push to production from a background fix
+<example name="worktree-cleanup">
+Remove worktrees before merging PRs. Use -D (uppercase) for branches.
+
+```bash
+git worktree remove --force ../feature-branch; git branch -D feature-branch
+```
+
+</example>
+
+<example name="file-paths">
+Use absolute paths in all file tools and worktree commands. Never use ~.
+
+```bash
+cd /Users/dev/project && pnpm run test
+```
+
+</example>
+</examples>
+
+Rules load from `.claude/rules/` and `.claude/skills/` automatically.
 
 ## TDD Protocol
 
 All code changes follow Red-Green-Refactor:
-1. **Red** — Write a failing test FIRST
-2. **Green** — Minimum code to pass
-3. **Refactor** — Clean up with green tests
+1. **Red** -- Write a failing test FIRST
+2. **Green** -- Minimum code to pass
+3. **Refactor** -- Clean up with green tests
 
 No exceptions. Bug fixes need a regression test. Refactors need existing coverage. No "tests later."
 
-## Agent Autonomy
+## Agent Behavior
 
-Before asking the user to do anything manually:
-1. Exhaust CLI tools (`gh`, `git`, project CLIs)
-2. Exhaust shell commands (curl, build scripts)
-3. Exhaust file tools (Read/Edit/Write for config changes)
-4. Only then ask for human help — with a clear explanation of what you tried
-
-Autonomy applies to development work. Production-affecting actions always need explicit human authorization.
-
-## Memory Management
-
-When you discover an operational lesson during any session — CI failure pattern, permission issue, workaround, tooling quirk, environment-specific behavior — save it to auto memory immediately. Don't wait to be asked.
-
-What to save proactively:
-- CI/CD pipeline behaviors and failure patterns specific to this project
-- Environment quirks (build flags, platform issues, dependency conflicts)
-- Project-specific conventions confirmed by the user
-- Workarounds for tools, APIs, or libraries used in this project
-- Permission configurations that required adjustment
-
-After completing `/bootstrap`, `/adopt`, or any significant configuration change, save the key decisions and project context to auto memory so future sessions start with full awareness.
+Exhaust tools before asking the user. Production actions need human authorization.
+Save operational lessons to auto memory immediately. Don't wait to be asked.
 
 ## Project File Locations
 
-Go directly to these paths — never search the codebase for them.
+Go directly to these paths -- never search the codebase for them.
 
 | Topic | Path | Notes |
 |-------|------|-------|
-| Agent reports | `docs/agents/*-report.md` | Flag YELLOW/RED items. Cross-agent context in `shared-context.md` |
-| Agent logs | `logs/<name>.log`, `<name>.error.log` | Read alongside reports to diagnose failures |
-| Agent scripts | `scripts/agents/` | Standalone bash files invoking Claude CLI headless |
+| Agent reports | `docs/agents/*-report.md` | Gitignored. Local-only operational history. Never committed (Rule #70) |
+| Agent logs | `logs/<name>.log`, `<name>.error.log` | Gitignored. Read alongside reports to diagnose failures |
+| Agent scripts | `scripts/agents/` | Gitignored. Standalone bash files invoking Claude CLI headless |
 | ADRs | `docs/decisions/` | Architecture decision records |
 | PR descriptions | `docs/prs/{number}_description.md` | |
 | Research docs | `docs/research/YYYY-MM-DD-description.md` | |

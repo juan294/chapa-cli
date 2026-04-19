@@ -10,3 +10,6 @@ coverage/
 CLAUDE.local.md
 .worktrees/
 .summon
+docs/agents/
+logs/
+scripts/agents/

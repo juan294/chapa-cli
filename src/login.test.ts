@@ -7,7 +7,7 @@ vi.mock("./config.js", () => ({
   saveConfig: mockSaveConfig,
 }));
 
-import { login, POLL_INTERVAL_MS } from "./login";
+import { getBrowserLaunchSpec, login, POLL_INTERVAL_MS } from "./login";
 
 // Injected test doubles (avoid mocking node:readline/node:child_process built-ins)
 const mockOpenBrowser = vi.fn();
@@ -17,6 +17,16 @@ const loginOpts = (overrides: Record<string, unknown> = {}) => ({
   _openBrowser: mockOpenBrowser,
   _waitForEnter: mockWaitForEnter,
   ...overrides,
+});
+
+describe("getBrowserLaunchSpec", () => {
+  it("avoids shell-based browser launch on Windows", () => {
+    expect(getBrowserLaunchSpec("https://example.com", "win32")).toEqual({
+      command: "rundll32.exe",
+      args: ["url.dll,FileProtocolHandler", "https://example.com"],
+      shell: false,
+    });
+  });
 });
 
 describe("login", () => {
@@ -219,6 +229,30 @@ describe("login", () => {
     expect(allErrors).toContain("[poll 1]");
     expect(allErrors).toContain("network error");
     errorSpy.mockRestore();
+  });
+
+  it("retries when a poll request times out", async () => {
+    let callCount = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        const timeoutError = new Error("The operation was aborted due to timeout");
+        timeoutError.name = "TimeoutError";
+        throw timeoutError;
+      }
+      return new Response(
+        JSON.stringify({ status: "approved", token: "t", handle: "h" }),
+        { status: 200 },
+      );
+    });
+
+    const p = login("https://example.com", loginOpts());
+    await advancePoll();
+    await advancePoll();
+    await p;
+
+    expect(callCount).toBe(2);
+    expect(mockSaveConfig).toHaveBeenCalledOnce();
   });
 
   it("does not set or restore NODE_TLS_REJECT_UNAUTHORIZED (handled by index.ts)", async () => {
@@ -507,25 +541,19 @@ describe("login", () => {
     }
   });
 
-  it("exits with code 1 on expired session", { timeout: 10000 }, async () => {
+  it("rejects with an expired-session error", { timeout: 10000 }, async () => {
     vi.useRealTimers(); // Use real timers for this test -- fast enough with 2s sleep
-
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("process.exit");
-    }) as never);
 
     vi.mocked(fetch).mockResolvedValue(
       new Response(JSON.stringify({ status: "expired" }), { status: 200 }),
     );
 
-    await expect(login("https://example.com", loginOpts())).rejects.toThrow("process.exit");
-    expect(mockExit).toHaveBeenCalledWith(1);
-
-    mockExit.mockRestore();
+    await expect(login("https://example.com", loginOpts())).rejects.toThrow(
+      "Session expired. Please try again.",
+    );
   });
 
-  it("times out after MAX_POLL_ATTEMPTS with persistent pending status", async () => {
-    const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+  it("rejects with a timeout error after MAX_POLL_ATTEMPTS", async () => {
     const errorSpy = vi.spyOn(console, "error");
 
     // Always return pending
@@ -536,15 +564,14 @@ describe("login", () => {
     const noopWait = () => Promise.resolve();
     const noopOpen = () => {};
     const p = login("https://example.com", { _waitForEnter: noopWait, _openBrowser: noopOpen });
+    const rejection = expect(p).rejects.toThrow("Timed out waiting for approval. Please try again.");
     // Advance fake timers through all 150 poll iterations
     for (let i = 0; i < 150; i++) await advancePoll();
-    await p;
+    await rejection;
 
-    expect(mockExit).toHaveBeenCalledWith(1);
     const allErrors = errorSpy.mock.calls.map(c => c.join(" ")).join("\n");
     expect(allErrors).toContain("Timed out");
 
-    mockExit.mockRestore();
     errorSpy.mockRestore();
   });
 

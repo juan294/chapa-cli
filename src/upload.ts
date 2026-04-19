@@ -1,6 +1,7 @@
 import type { StatsData } from "./shared.js";
 import { stripTrailingSlashes } from "./shared.js";
 import type { Logger } from "./logger.js";
+import { requestJson } from "./http.js";
 
 interface UploadOptions {
   targetHandle: string;
@@ -23,7 +24,6 @@ export async function uploadSupplementalStats(
   const baseUrl = stripTrailingSlashes(opts.serverUrl);
   const url = `${baseUrl}/api/supplemental`;
   const log = opts.logger;
-
   const payload = JSON.stringify({
     targetHandle: opts.targetHandle,
     sourceHandle: opts.sourceHandle,
@@ -33,25 +33,37 @@ export async function uploadSupplementalStats(
   log?.debug(`Upload payload size: ${payload.length} bytes`);
 
   try {
-    const res = await fetch(url, {
+    const res = await requestJson<Record<string, unknown>>({
+      url,
       method: "POST",
+      token: opts.token,
+      timeoutMs: 30_000,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${opts.token}`,
       },
       body: payload,
     });
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
+      if (res.category !== "http") {
+        return {
+          success: false,
+          error: `Upload failed: ${res.message}`,
+        };
+      }
+
+      const body = typeof res.body === "object" && res.body !== null
+        ? res.body as Record<string, unknown>
+        : {};
+      const reason = typeof body.error === "string" ? body.error : "Unknown error";
       return {
         success: false,
-        error: `Server returned ${res.status}: ${body.error ?? "Unknown error"}`,
+        error: `Server returned ${res.status ?? "unknown"}: ${reason}`,
         serverResponse: body,
       };
     }
 
-    const serverResponse = await res.json().catch(() => ({}));
+    const serverResponse = res.data;
     log?.debug(`Server response: ${JSON.stringify(serverResponse)}`);
     return { success: true, serverResponse };
   } catch (err) {

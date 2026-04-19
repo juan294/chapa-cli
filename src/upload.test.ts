@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { uploadSupplementalStats } from "./upload";
-import type { StatsData } from "./shared";
+import { uploadInsights } from "./insights";
+import type { InsightsUpload, StatsData } from "./shared";
 
 const mockFetch = vi.fn();
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
 function makeStats(): StatsData {
   return {
@@ -26,6 +34,53 @@ function makeStats(): StatsData {
   };
 }
 
+function makeInsightsData(): InsightsUpload {
+  return {
+    tool: "claude-code",
+    reportPeriod: {
+      start: "2026-02-20",
+      end: "2026-03-07",
+    },
+    volume: {
+      messages: 120,
+      linesAdded: 800,
+      linesDeleted: 250,
+      files: 18,
+      days: 12,
+      msgsPerDay: 10,
+    },
+    toolUsage: { Read: 50, Edit: 30 },
+    sessionTypes: { coding: 8, research: 4 },
+    outcomes: {
+      fullyAchieved: 6,
+      mostlyAchieved: 4,
+      partiallyAchieved: 2,
+    },
+    friction: {
+      buggyCode: 1,
+      wrongApproach: 2,
+      misunderstoodRequest: 1,
+    },
+    satisfaction: {
+      dissatisfied: 1,
+      likelySatisfied: 3,
+      satisfied: 8,
+    },
+    multiClauding: {
+      overlapEvents: 2,
+      sessionsInvolved: 2,
+      messagePercent: 12,
+    },
+    responseTime: {
+      medianSeconds: 18,
+      averageSeconds: 24,
+    },
+    toolErrors: { bash: 1 },
+    totalSessions: 12,
+    totalToolCalls: 80,
+  };
+}
+
 describe("uploadSupplementalStats", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", mockFetch);
@@ -36,11 +91,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("sends POST with correct body and auth header", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ success: true }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
 
     const result = await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -69,11 +120,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("returns error message on 401", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: "Invalid token" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Invalid token" }, 401));
 
     const result = await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -88,11 +135,7 @@ describe("uploadSupplementalStats", () => {
   });
 
   it("returns error message on 403", async () => {
-    mockFetch.mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: async () => ({ error: "Handle mismatch" }),
-    });
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Handle mismatch" }, 403));
 
     const result = await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -125,7 +168,7 @@ describe("uploadSupplementalStats", () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => { throw new Error("invalid json"); },
+      text: async () => "(unreadable)",
     });
 
     const result = await uploadSupplementalStats({
@@ -142,11 +185,11 @@ describe("uploadSupplementalStats", () => {
     expect(result.error).toContain("Unknown error");
   });
 
-  it("falls back when res.json() rejects on success response", async () => {
+  it("rejects empty 2xx responses instead of treating them as success", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => { throw new Error("invalid json"); },
+      text: async () => "",
     });
 
     const result = await uploadSupplementalStats({
@@ -157,17 +200,31 @@ describe("uploadSupplementalStats", () => {
       serverUrl: "https://chapa.thecreativetoken.com",
     });
 
-    // Should still succeed — the fallback {} is used for serverResponse
-    expect(result.success).toBe(true);
-    expect(result.serverResponse).toEqual({});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
   });
 
-  it("strips trailing slash from server URL", async () => {
+  it("rejects malformed 2xx JSON responses instead of treating them as success", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ success: true }),
+      text: async () => "{",
     });
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
+  });
+
+  it("strips trailing slash from server URL", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
 
     await uploadSupplementalStats({
       targetHandle: "juan294",
@@ -181,5 +238,66 @@ describe("uploadSupplementalStats", () => {
       "https://chapa.thecreativetoken.com/api/supplemental",
       expect.anything(),
     );
+  });
+
+  it("returns normalized timeout errors", async () => {
+    const timeoutError = new Error("The operation was aborted due to timeout");
+    timeoutError.name = "TimeoutError";
+    mockFetch.mockRejectedValue(timeoutError);
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Request timed out after 30000ms");
+  });
+});
+
+describe("uploadInsights write contract", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects empty 2xx responses instead of reporting success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "",
+    });
+
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
+  });
+
+  it("rejects malformed 2xx JSON responses instead of reporting success", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "{",
+    });
+
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Upload failed: Invalid JSON response");
   });
 });

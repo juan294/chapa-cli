@@ -107,6 +107,13 @@ describe("createLogger", () => {
       log.error("json error");
       expect(allStderr()).toContain("json error");
     });
+
+    it("debug() writes to stderr when verbose and json are both enabled", () => {
+      const log = createLogger({ verbose: true, json: true });
+      log.debug("json debug");
+      expect(allStdout()).toBe("");
+      expect(allStderr()).toContain("json debug");
+    });
   });
 
   // ── Timing ───────────────────────────────────────────────────────────
@@ -161,6 +168,15 @@ describe("createLogger", () => {
       log.time("fetch");
       log.timeEnd("fetch");
       expect(allStderr()).toBe("");
+    });
+
+    it("timeEnd() logs to stderr when verbose and json are both enabled", () => {
+      const log = createLogger({ verbose: true, json: true });
+      log.time("fetch");
+      log.timeEnd("fetch");
+      expect(allStdout()).toBe("");
+      expect(allStderr()).toContain("fetch");
+      expect(allStderr()).toContain("ms");
     });
   });
 });
