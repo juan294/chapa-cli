@@ -9,7 +9,7 @@
       <mxGeometry x="350" y="55" width="700" height="30" as="geometry"/>
     </mxCell>
     <mxCell id="swim_cli" value="CLI Layer" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
-      <mxGeometry x="40" y="100" width="320" height="340" as="geometry"/>
+      <mxGeometry x="40" y="100" width="320" height="390" as="geometry"/>
     </mxCell>
     <mxCell id="cli_entry" value="CLI Entry&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;index.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
       <mxGeometry x="90" y="45" width="140" height="50" as="geometry"/>
@@ -20,11 +20,14 @@
     <mxCell id="cli_logger" value="Logger&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;logger.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
       <mxGeometry x="20" y="210" width="120" height="50" as="geometry"/>
     </mxCell>
-    <mxCell id="cli_telemetry" value="Telemetry&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;telemetry.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+    <mxCell id="cli_telemetry" value="Telemetry Dispatch&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;telemetry.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
       <mxGeometry x="170" y="210" width="120" height="50" as="geometry"/>
     </mxCell>
-    <mxCell id="cli_insights" value="Insights Parser&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;insights.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
-      <mxGeometry x="90" y="280" width="140" height="50" as="geometry"/>
+    <mxCell id="cli_insights" value="Lazy Insights Module&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;insights.ts via index.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="80" y="285" width="160" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cli_boundary" value="CLI Error Boundary&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;index.ts catch/exit&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;" vertex="1" parent="swim_cli">
+      <mxGeometry x="80" y="350" width="160" height="50" as="geometry"/>
     </mxCell>
     <mxCell id="edge_entry_args" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_entry" target="cli_args" parent="swim_cli">
       <mxGeometry relative="1" as="geometry"/>
@@ -32,8 +35,16 @@
     <mxCell id="edge_args_logger" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_args" target="cli_logger" parent="swim_cli">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
-    <mxCell id="edge_args_telemetry" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_args" target="cli_telemetry" parent="swim_cli">
+    <mxCell id="edge_entry_telemetry" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;" edge="1" source="cli_entry" target="cli_telemetry" parent="swim_cli">
       <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_oauth_boundary" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#d6b656;dashed=1;" edge="1" source="auth_oauth" target="cli_boundary" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="560" y="390"/>
+          <mxPoint x="320" y="390"/>
+        </Array>
+      </mxGeometry>
     </mxCell>
     <mxCell id="swim_auth" value="Auth Layer" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
       <mxGeometry x="400" y="100" width="280" height="340" as="geometry"/>
@@ -54,7 +65,7 @@
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
     <mxCell id="swim_data" value="Data Layer" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
-      <mxGeometry x="720" y="100" width="280" height="340" as="geometry"/>
+      <mxGeometry x="720" y="100" width="280" height="390" as="geometry"/>
     </mxCell>
     <mxCell id="data_fetch" value="GitHub Integration&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;fetch-emu.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="swim_data">
       <mxGeometry x="70" y="45" width="140" height="50" as="geometry"/>
@@ -65,10 +76,19 @@
     <mxCell id="data_upload" value="Upload to Chapa&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;upload.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="swim_data">
       <mxGeometry x="70" y="210" width="140" height="50" as="geometry"/>
     </mxCell>
+    <mxCell id="data_http" value="Shared HTTP Transport&lt;br&gt;&lt;i style=&quot;font-size:10px;color:#888&quot;&gt;http.ts&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;" vertex="1" parent="swim_data">
+      <mxGeometry x="60" y="290" width="160" height="50" as="geometry"/>
+    </mxCell>
     <mxCell id="edge_fetch_shared" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="data_fetch" target="data_shared" parent="swim_data">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
     <mxCell id="edge_shared_upload" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="data_shared" target="data_upload" parent="swim_data">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_fetch_http" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="data_fetch" target="data_http" parent="swim_data">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+    <mxCell id="edge_upload_http" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;" edge="1" source="data_upload" target="data_http" parent="swim_data">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
     <mxCell id="swim_ext" value="External Services" style="swimlane;startSize=30;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;rounded=1;arcSize=8;container=1;collapsible=0;" vertex="1" parent="1">
@@ -104,10 +124,10 @@
         </Array>
       </mxGeometry>
     </mxCell>
-    <mxCell id="edge_fetch_github" value="GraphQL" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;" edge="1" source="data_fetch" target="ext_github" parent="1">
+    <mxCell id="edge_fetch_github" value="GitHub requests" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.65;fontSize=10;" edge="1" source="data_http" target="ext_github" parent="1">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
-    <mxCell id="edge_upload_chapa" value="POST" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;" edge="1" source="data_upload" target="ext_chapa" parent="1">
+    <mxCell id="edge_upload_chapa" value="poll, upload, recalc, telemetry" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=10;" edge="1" source="data_http" target="ext_chapa" parent="1">
       <mxGeometry relative="1" as="geometry"/>
     </mxCell>
     <mxCell id="edge_oauth_browser" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#b85450;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="auth_oauth" target="ext_browser" parent="1">
@@ -118,12 +138,21 @@
         </Array>
       </mxGeometry>
     </mxCell>
-    <mxCell id="edge_insights_upload" value="" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.75;fontSize=10;" edge="1" source="cli_insights" target="data_upload" parent="1">
+    <mxCell id="edge_insights_upload" value="upload + recalc" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.75;fontSize=10;" edge="1" source="cli_insights" target="data_http" parent="1">
       <mxGeometry relative="1" as="geometry">
         <Array as="points">
-          <mxPoint x="380" y="505"/>
-          <mxPoint x="700" y="505"/>
-          <mxPoint x="700" y="347"/>
+          <mxPoint x="380" y="440"/>
+          <mxPoint x="700" y="440"/>
+          <mxPoint x="700" y="415"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="edge_telemetry_http" value="fire-and-forget" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#82b366;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.25;fontSize=10;" edge="1" source="cli_telemetry" target="data_http" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="380" y="335"/>
+          <mxPoint x="700" y="335"/>
+          <mxPoint x="700" y="405"/>
         </Array>
       </mxGeometry>
     </mxCell>

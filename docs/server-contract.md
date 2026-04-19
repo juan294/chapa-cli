@@ -40,7 +40,7 @@ interface TelemetryPayload {
     parseMs?: number;         // Insights HTML parse duration
     uploadMs?: number;        // Chapa server upload duration
   };
-  cliVersion: string;         // e.g. "0.3.1"
+  cliVersion: string;         // e.g. "0.4.0"
 }
 ```
 

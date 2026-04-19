@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Shared request transport in `src/http.ts` with normalized timeout,
+  HTTP, network, and parse failure handling
+
+### Changed
+
+- Route merge uploads, login polling, telemetry, and insights
+  network calls through the shared transport layer
+- Guarantee merge telemetry on both fetch and upload failures,
+  not just successful uploads
+- Centralize CLI exits in `index.ts`; `login()` now throws timeout
+  and expired-session errors instead of exiting directly
+- Lazy-load the `insights` command path so non-insights commands
+  do not eagerly load the `linkedom` parser bundle
+
+### Fixed
+
+- Normalize network error reporting across merge, login, insights,
+  upload, and telemetry flows
+- Bound user-facing network calls with consistent request timeouts
+  instead of allowing indefinite hangs
+
+### Documentation
+
+- Refresh architecture docs and diagrams for the shared transport
+  layer and lazy-loaded insights module
+- Update supported-version and example CLI version references to `0.4.0`
+
 ## [0.4.0] - 2026-03-23
 
 ### Added

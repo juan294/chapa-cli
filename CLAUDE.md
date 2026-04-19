@@ -10,16 +10,23 @@ chapa-cli is an open-source CLI tool that merges GitHub Enterprise Managed User 
 src/
 ├── index.ts       # CLI entry point, command dispatch, error boundary
 ├── cli.ts         # Argument parsing (Node parseArgs, strict mode)
+├── http.ts        # Shared HTTP transport, timeouts, and request normalization
 ├── shared.ts      # Types, GraphQL query, stats aggregation, shared utilities
 ├── login.ts       # OAuth device flow (browser auto-open)
 ├── fetch-emu.ts   # GitHub GraphQL integration
 ├── upload.ts      # Chapa server upload (merge stats)
-├── insights.ts    # Claude Code HTML report parsing + upload
+├── insights.ts    # Lazy-loaded Claude Code HTML parsing + upload
 ├── config.ts      # Credential storage (~/.chapa/credentials.json)
 ├── auth.ts        # Token resolution
 ├── telemetry.ts   # Fire-and-forget operation telemetry
 └── logger.ts      # Structured logging (verbose/JSON modes)
 ```
+
+`index.ts` eagerly loads the core merge/login path and lazy-loads
+`insights.ts` only when the `insights` command runs. `http.ts`
+centralizes timeout handling, auth/header wiring, and response
+normalization for GitHub fetches, Chapa uploads, login polling,
+insights upload/recalculate, and telemetry.
 
 Six API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, stats upload, insights upload, badge recalculate, and telemetry.
 
