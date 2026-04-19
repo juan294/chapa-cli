@@ -35,8 +35,6 @@ jobs:
           fi
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - uses: actions/setup-node@v6
         with:
