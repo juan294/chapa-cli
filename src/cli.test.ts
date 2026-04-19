@@ -38,6 +38,28 @@ describe("parseArgs", () => {
     expect(args.serverExplicit).toBe(false);
   });
 
+  it("serverExplicit is true for --server=URL form", () => {
+    const args = parseArgs(["merge", "--server=http://localhost:3001", "--emu-handle", "foo"]);
+    expect(args.serverExplicit).toBe(true);
+    expect(args.server).toBe("http://localhost:3001");
+  });
+
+  it("serverExplicit is true for space-separated --server URL form", () => {
+    const args = parseArgs(["merge", "--server", "http://localhost:3001", "--emu-handle", "foo"]);
+    expect(args.serverExplicit).toBe(true);
+    expect(args.server).toBe("http://localhost:3001");
+  });
+
+  it("serverExplicit is false when --server is absent", () => {
+    const args = parseArgs(["merge", "--emu-handle", "foo"]);
+    expect(args.serverExplicit).toBe(false);
+  });
+
+  it("serverExplicit is false when a value merely contains '--server' as substring", () => {
+    const args = parseArgs(["merge", "--emu-handle", "not--server"]);
+    expect(args.serverExplicit).toBe(false);
+  });
+
   it("returns null command when no positional arg", () => {
     const args = parseArgs(["--handle", "juan294"]);
     expect(args.command).toBeNull();

@@ -100,7 +100,7 @@ export function parseArgs(argv: string[]): CliArgs {
     token: values.token as string | undefined,
     file: values.file as string | undefined,
     server: (values.server as string) ?? DEFAULT_SERVER,
-    serverExplicit: argv.includes("--server"),
+    serverExplicit: argv.some(a => a === "--server" || a.startsWith("--server=")),
     verbose: (values.verbose as boolean) ?? false,
     json: (values.json as boolean) ?? false,
     insecure: (values.insecure as boolean) ?? false,

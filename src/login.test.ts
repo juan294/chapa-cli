@@ -255,8 +255,8 @@ describe("login", () => {
     expect(mockSaveConfig).toHaveBeenCalledOnce();
   });
 
-  it("does not set or restore NODE_TLS_REJECT_UNAUTHORIZED (handled by index.ts)", async () => {
-    // TLS bypass is now global in index.ts, not in login().
+  it("never mutates NODE_TLS_REJECT_UNAUTHORIZED — scoping is per-request in http.ts", async () => {
+    // TLS bypass is per-request in http.ts (withInsecureTls), not in login().
     // Verify login() does NOT touch the env var.
     const originalVal = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;

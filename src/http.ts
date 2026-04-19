@@ -33,6 +33,21 @@ interface RequestOptions<TFallback> {
   body?: BodyInit | object;
   timeoutMs?: number;
   fallbackData?: TFallback;
+  insecure?: boolean;
+}
+
+async function withInsecureTls<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) {
+      delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    } else {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = prev;
+    }
+  }
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -106,13 +121,16 @@ async function makeRequest(
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  try {
-    const response = await fetch(opts.url, {
+  const doFetch = () =>
+    fetch(opts.url, {
       method: opts.method ?? "GET",
       headers,
       body: normalizeBody(opts.body, headers),
       signal: AbortSignal.timeout(timeoutMs),
     });
+
+  try {
+    const response = opts.insecure ? await withInsecureTls(doFetch) : await doFetch();
 
     if (!response.ok) {
       const raw = await response.text().catch(() => "(unreadable)");

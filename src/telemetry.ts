@@ -54,6 +54,7 @@ export function classifyError(message: string): TelemetryErrorCategory {
 export async function sendTelemetry(
   serverUrl: string,
   payload: TelemetryPayload,
+  opts?: { insecure?: boolean },
 ): Promise<void> {
   const baseUrl = stripTrailingSlashes(serverUrl);
   const url = `${baseUrl}/api/telemetry`;
@@ -65,18 +66,20 @@ export async function sendTelemetry(
       timeoutMs: 5000,
       body: payload,
       fallbackData: {},
+      insecure: opts?.insecure,
     });
   } catch {
     // Intentionally swallowed — telemetry must never block or fail the CLI
   }
 }
 
-export function queueTelemetry(serverUrl: string, payload: TelemetryPayload): void {
+export function queueTelemetry(serverUrl: string, payload: TelemetryPayload, opts?: { insecure?: boolean }): void {
   const baseUrl = stripTrailingSlashes(serverUrl);
 
   spawnDetachedPost({
     url: `${baseUrl}/api/telemetry`,
     timeoutMs: 5000,
     body: payload,
+    insecure: opts?.insecure,
   });
 }

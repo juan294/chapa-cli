@@ -10,6 +10,7 @@ interface UploadOptions {
   token: string;
   serverUrl: string;
   logger?: Logger;
+  insecure?: boolean;
 }
 
 interface UploadResult {
@@ -42,6 +43,7 @@ export async function uploadSupplementalStats(
         "Content-Type": "application/json",
       },
       body: payload,
+      insecure: opts.insecure,
     });
 
     if (!res.ok) {

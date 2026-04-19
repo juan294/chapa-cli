@@ -526,6 +526,56 @@ describe("fetchEmuStats", () => {
     expect(secondRequestBody.variables.prCursor).toBe("cursor-100");
   });
 
+  it("stops paginating after MAX_PR_PAGES and returns a graphql errorCategory", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Build a response factory that always reports hasNextPage: true
+    const makePageResponse = (cursor: string) =>
+      jsonResponse({
+        data: {
+          user: {
+            login: "runaway",
+            name: null,
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 0, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 0,
+                nodes: [],
+                pageInfo: {
+                  hasNextPage: true,
+                  endCursor: cursor,
+                },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      });
+
+    // mockFetch always returns hasNextPage: true with a rotating cursor
+    mockFetch.mockImplementation((_, opts: RequestInit) => {
+      const body = JSON.parse(opts.body as string) as { variables: { prCursor?: string | null } };
+      const cursor = body.variables.prCursor ?? "cursor-0";
+      const nextCursor = `cursor-next-${cursor}`;
+      return Promise.resolve(makePageResponse(nextCursor));
+    });
+
+    const result = await fetchEmuStats("runaway", "ghp_token");
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.errorCategory).toBe("graphql");
+    expect(result.error).toMatch(/exceeded/i);
+    // 1 initial request + 50 pagination requests = 51 total
+    expect(mockFetch).toHaveBeenCalledTimes(51);
+
+    errorSpy.mockRestore();
+  });
+
   it("maps timeout failures into a stable error path", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const timeoutError = new Error("The operation was aborted due to timeout");
