@@ -93,7 +93,11 @@ function deleteSavedConfig(): boolean {
 }
 
 function isLoopbackHost(hostname: string): boolean {
-  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1";
+  return hostname === "localhost"
+    || hostname.endsWith(".localhost")
+    || hostname === "127.0.0.1"
+    || hostname === "::1"
+    || hostname === "[::1]";
 }
 
 function assertTrustedServer(serverUrl: string): void {
@@ -172,7 +176,7 @@ async function handleLogin(args: CliArgs): Promise<void> {
       stats: EMPTY_TELEMETRY_STATS,
       timing: { totalMs, authMs: totalMs },
       cliVersion: VERSION,
-    });
+    }, { insecure: args.insecure });
   }
 }
 
@@ -272,12 +276,13 @@ async function handleInsights(
       token: authToken,
       serverUrl,
       logger: log,
+      insecure: args.insecure,
     });
     uploadMs = log.timeEnd("upload");
 
   // Trigger recalculate (non-blocking, fire-and-forget)
   if (result.success) {
-    insightsModule.queueRecalculate(serverUrl, authToken);
+    insightsModule.queueRecalculate(serverUrl, authToken, { insecure: args.insecure });
   }
 
     totalMs = log.timeEnd("total");
@@ -347,7 +352,7 @@ async function handleInsights(
         uploadMs: round(uploadMs),
       },
       cliVersion: VERSION,
-    });
+    }, { insecure: args.insecure });
   }
 
   if (caught) {
@@ -440,6 +445,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
       token: authToken,
       serverUrl,
       logger: log,
+      insecure: args.insecure,
     });
     uploadMs = log.timeEnd("upload");
 
@@ -516,7 +522,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
           totalMs: round(totalMs || log.timeEnd("total")),
         },
         cliVersion: VERSION,
-      });
+      }, { insecure: args.insecure });
     }
   }
 
@@ -541,8 +547,8 @@ function mergeTelemetryStats(stats: {
   };
 }
 
-function emitTelemetry(serverUrl: string, payload: TelemetryPayload): void {
-  queueTelemetry(serverUrl, payload);
+function emitTelemetry(serverUrl: string, payload: TelemetryPayload, opts?: { insecure?: boolean }): void {
+  queueTelemetry(serverUrl, payload, opts);
 }
 
 // ── Main Dispatcher ───────────────────────────────────────────────────────
@@ -567,10 +573,9 @@ async function main(): Promise<void> {
     throw new CliError(`Unknown command '${args.unknownCommand}'`);
   }
 
-  // Global TLS bypass for corporate networks — applies to all commands
   if (args.insecure) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    console.warn("\n⚠ TLS certificate verification disabled (--insecure).");
+    console.warn("\n⚠ TLS certificate verification disabled for the Chapa server (--insecure).");
+    console.warn("  GitHub API calls still validate TLS.");
     console.warn("  Use only on corporate networks with TLS interception.\n");
   }
 

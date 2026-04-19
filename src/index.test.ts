@@ -316,7 +316,7 @@ describe("index.ts command dispatch", () => {
 
   // ── --insecure ───────────────────────────────────────────────────────
 
-  it("sets NODE_TLS_REJECT_UNAUTHORIZED and warns when --insecure is used", async () => {
+  it("does not globally set NODE_TLS_REJECT_UNAUTHORIZED when --insecure is used", async () => {
     const originalVal = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 
@@ -324,11 +324,12 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(process.env.NODE_TLS_REJECT_UNAUTHORIZED).toBe("0");
+    expect(process.env.NODE_TLS_REJECT_UNAUTHORIZED).toBeUndefined();
 
     const allWarns = spyOutput(warnSpy);
-    expect(allWarns).toContain("TLS certificate verification disabled");
     expect(allWarns).toContain("--insecure");
+    expect(allWarns).toContain("Chapa server");
+    expect(allWarns).toContain("GitHub API calls still validate TLS");
 
     // Restore
     if (originalVal !== undefined) {
@@ -351,6 +352,56 @@ describe("index.ts command dispatch", () => {
     // Restore
     if (originalVal !== undefined) {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalVal;
+    }
+  });
+
+  it("forwards insecure: true to uploadSupplementalStats on merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "foo",
+        handle: "juan294",
+        token: "auth-tok",
+        insecure: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 5 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ insecure: true }),
+    );
+  });
+
+  it("does NOT forward insecure to fetchEmuStats (GitHub always validates TLS)", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "foo",
+        handle: "juan294",
+        token: "auth-tok",
+        insecure: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 5 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockFetchEmuStats).toHaveBeenCalled();
+    const fetchEmuCalls = mockFetchEmuStats.mock.calls;
+    for (const callArgs of fetchEmuCalls) {
+      // callArgs[2] is the opts object passed to fetchEmuStats
+      const opts = callArgs[2] as Record<string, unknown> | undefined;
+      if (opts != null) {
+        expect(opts).not.toHaveProperty("insecure");
+      }
     }
   });
 
@@ -382,6 +433,7 @@ describe("index.ts command dispatch", () => {
         errorCategory: undefined,
         timing: expect.objectContaining({ authMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -434,6 +486,7 @@ describe("index.ts command dispatch", () => {
         errorCategory: "network",
         timing: expect.objectContaining({ authMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -628,6 +681,7 @@ describe("index.ts command dispatch", () => {
         stats: expect.objectContaining({ commitsTotal: 0 }),
         timing: expect.objectContaining({ uploadMs: 0 }),
       }),
+      expect.anything(),
     );
     expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
     expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
@@ -699,6 +753,7 @@ describe("index.ts command dispatch", () => {
         targetHandle: "juan294",
         sourceHandle: "corp_user",
       }),
+      expect.anything(),
     );
     expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
   });
@@ -827,6 +882,7 @@ describe("index.ts command dispatch", () => {
         timing: expect.objectContaining({ fetchMs: expect.any(Number) }),
         cliVersion: expect.any(String),
       }),
+      expect.anything(),
     );
     expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
   });
@@ -1008,6 +1064,77 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("allows bracketed IPv6 loopback [::1] HTTP servers for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://[::1]:3000",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: "http://[::1]:3000" }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("allows 127.0.0.1 HTTP servers for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://127.0.0.1:3000",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: "http://127.0.0.1:3000" }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-loopback HTTP servers (insecure.example.com) for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://insecure.example.com",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockFetchEmuStats).not.toHaveBeenCalled();
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("HTTPS");
+    expect(output).toContain("localhost");
+  });
+
   it("surfaces config corruption instead of treating merge as logged out", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({ command: "merge", emuHandle: "corp_user" }),
@@ -1156,6 +1283,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "user",
         timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: 0, totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -1202,6 +1330,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "user",
         timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -1300,6 +1429,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "user",
         timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 

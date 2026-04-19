@@ -170,6 +170,9 @@ function extractVolumeStats(doc: Document): {
   return result;
 }
 
+const VALUE_STYLE = /font-weight\s*:\s*(700|bold)\b/i;
+const LABEL_STYLE = /text-transform\s*:\s*uppercase\b/i;
+
 function parseMultiClauding(card: Element | null): {
   overlapEvents: number;
   sessionsInvolved: number;
@@ -184,15 +187,19 @@ function parseMultiClauding(card: Element | null): {
 
   for (const div of statDivs) {
     const style = div.getAttribute("style") ?? "";
-    if (style.includes("font-weight: 700") || style.includes("font-weight:700")) {
+    if (VALUE_STYLE.test(style)) {
       values.push(parseNumeric(div.textContent?.trim() ?? "0"));
     }
-    if (style.includes("text-transform: uppercase") || style.includes("text-transform:uppercase")) {
+    if (LABEL_STYLE.test(style)) {
       labels.push(div.textContent?.trim().toLowerCase() ?? "");
     }
   }
 
-  for (let i = 0; i < labels.length && i < values.length; i++) {
+  if (labels.length !== values.length) {
+    return result;
+  }
+
+  for (let i = 0; i < labels.length; i++) {
     const label = labels[i]!;
     const value = values[i]!;
     if (label.includes("overlap")) result.overlapEvents = value;
@@ -306,6 +313,7 @@ interface InsightsUploadOptions {
   token: string;
   serverUrl: string;
   logger?: Logger;
+  insecure?: boolean;
 }
 
 interface InsightsUploadResult {
@@ -340,6 +348,7 @@ export async function uploadInsights(
         "Content-Type": "application/json",
       },
       body: payload,
+      insecure: opts.insecure,
     });
 
     if (!res.ok) {
@@ -403,13 +412,14 @@ export async function triggerRecalculate(
   }
 }
 
-export function queueRecalculate(serverUrl: string, token: string): void {
+export function queueRecalculate(serverUrl: string, token: string, opts?: { insecure?: boolean }): void {
   const baseUrl = stripTrailingSlashes(serverUrl);
 
   spawnDetachedPost({
     url: `${baseUrl}/api/recalculate`,
     timeoutMs: 30_000,
     token,
+    insecure: opts?.insecure,
   });
 }
 

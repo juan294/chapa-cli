@@ -159,6 +159,7 @@ export async function login(serverUrl: string, opts: LoginOptions = {}): Promise
       const res = await requestJson<PollResponse>({
         url: `${baseUrl}/api/cli/auth/poll?session=${sessionId}`,
         timeoutMs: 10_000,
+        insecure,
       });
       if (!res.ok) {
         serverErrorLogged = handlePollFailure(res, i + 1, verbose, insecure, serverErrorLogged);
