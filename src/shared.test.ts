@@ -837,6 +837,16 @@ describe("normalizeErrorCauseChain", () => {
       chain: "",
     });
   });
+
+  it("skips empty messages but preserves error codes in the chain", () => {
+    const err = Object.assign(new Error(""), { code: "SELF_SIGNED_CERT_IN_CHAIN" });
+
+    expect(normalizeErrorCauseChain(err)).toEqual({
+      rootMessage: "",
+      detail: "",
+      chain: "SELF_SIGNED_CERT_IN_CHAIN",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

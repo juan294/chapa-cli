@@ -506,24 +506,22 @@ async function handleMerge(args: CliArgs): Promise<void> {
       shouldSendTelemetry = true;
     }
   } finally {
-    if (shouldSendTelemetry) {
-      emitTelemetry(serverUrl, {
-        operationId,
-        command: "merge",
-        stage: telemetryStage,
-        targetHandle: handle,
-        sourceHandle: emuHandle,
-        success: mergeSucceeded,
-        errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
-        stats: telemetryStats,
-        timing: {
-          fetchMs: round(fetchMs),
-          uploadMs: round(uploadMs),
-          totalMs: round(totalMs || log.timeEnd("total")),
-        },
-        cliVersion: VERSION,
-      }, { insecure: args.insecure });
-    }
+    emitTelemetry(serverUrl, {
+      operationId,
+      command: "merge",
+      stage: telemetryStage,
+      targetHandle: handle,
+      sourceHandle: emuHandle,
+      success: mergeSucceeded,
+      errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
+      stats: telemetryStats,
+      timing: {
+        fetchMs: round(fetchMs),
+        uploadMs: round(uploadMs),
+        totalMs: round(totalMs || log.timeEnd("total")),
+      },
+      cliVersion: VERSION,
+    }, { insecure: args.insecure });
   }
 
   if (caught) {

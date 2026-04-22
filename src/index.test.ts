@@ -1636,4 +1636,168 @@ describe("index.ts command dispatch", () => {
     const output = spyOutput(errorSpy);
     expect(output).toContain("GraphQL schema mismatch");
   });
+
+  it("prefers the injected build-time version when __CLI_VERSION__ is defined", async () => {
+    vi.stubGlobal("__CLI_VERSION__", "9.9.9-test");
+    mockParseArgs.mockReturnValue(defaultArgs({ version: true }));
+
+    await runMain();
+
+    expect(spyOutput(logSpy)).toContain("9.9.9-test");
+    vi.unstubAllGlobals();
+  });
+
+  it("rethrows non-Error login failures after telemetry classification", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+    mockLogin.mockRejectedValue("plain failure");
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      "https://chapa.thecreativetoken.com",
+      expect.objectContaining({
+        success: false,
+        errorCategory: "unknown",
+      }),
+      { insecure: false },
+    );
+  });
+
+  it("reports non-ENOENT file read failures for insights uploads", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "insights",
+      file: "report.html",
+    }));
+    mockLoadConfig.mockReturnValue({
+      handle: "juan294",
+      token: "auth-token",
+      server: "https://chapa.thecreativetoken.com",
+    });
+    mockReadFileSync.mockImplementation(() => {
+      const err = Object.assign(new Error("permission denied"), { code: "EACCES" });
+      throw err;
+    });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.error)).toContain("Error reading file: permission denied");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("emits JSON when insights upload fails without an explicit error message", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "insights",
+      file: "report.html",
+      json: true,
+    }));
+    mockLoadConfig.mockReturnValue({
+      handle: "juan294",
+      token: "auth-token",
+      server: "https://chapa.thecreativetoken.com",
+    });
+    mockUploadInsights.mockResolvedValue({ success: false });
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const payload = JSON.parse(written);
+    expect(payload.success).toBe(false);
+    expect(payload.error).toBeUndefined();
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("logs a plain success message when insights upload succeeds without a craft score", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "insights",
+      file: "report.html",
+    }));
+    mockLoadConfig.mockReturnValue({
+      handle: "juan294",
+      token: "auth-token",
+      server: "https://chapa.thecreativetoken.com",
+    });
+    mockUploadInsights.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.info)).toContain("Success! Insights uploaded for juan294");
+    expect(loggerOutput(mockLogger.info)).not.toContain("Craft Score:");
+  });
+
+  it("emits JSON when merge fetch fails in json mode", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      handle: "juan294",
+      emuHandle: "corp_user",
+      emuToken: "emu-token",
+      token: "auth-token",
+      json: true,
+    }));
+    mockResolveToken.mockReturnValue("emu-token");
+    mockFetchEmuStats.mockResolvedValue(failedFetchResult("fetch broke", "network"));
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const payload = JSON.parse(written);
+    expect(payload.success).toBe(false);
+    expect(payload.error).toBe("fetch broke");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("falls back to Upload failed when merge upload omits an error message", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      handle: "juan294",
+      emuHandle: "corp_user",
+      emuToken: "emu-token",
+      token: "auth-token",
+    }));
+    mockResolveToken.mockReturnValue("emu-token");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 1 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: false });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.error)).toContain("Error: undefined");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("classifies non-Error merge failures through the generic catch path", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      handle: "juan294",
+      emuHandle: "corp_user",
+      emuToken: "emu-token",
+      token: "auth-token",
+    }));
+    mockResolveToken.mockReturnValue("emu-token");
+    mockFetchEmuStats.mockRejectedValue("plain failure");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      "https://chapa.thecreativetoken.com",
+      expect.objectContaining({
+        success: false,
+        errorCategory: "unknown",
+      }),
+      { insecure: false },
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("rejects invalid login server URLs before dispatching login", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "login",
+      server: "not a url",
+      serverExplicit: true,
+    }));
+
+    await runMain();
+
+    expect(spyOutput(errorSpy)).toContain("Invalid server URL: not a url");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
 });

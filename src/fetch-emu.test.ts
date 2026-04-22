@@ -594,4 +594,259 @@ describe("fetchEmuStats", () => {
 
     errorSpy.mockRestore();
   });
+
+  it("maps parse failures into the graphql error category", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => "{",
+    });
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Invalid JSON response",
+      errorCategory: "graphql",
+    });
+  });
+
+  it("maps HTTP 403 failures into the auth error category", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 403,
+      text: async () => "Forbidden",
+    });
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "GraphQL HTTP 403: Forbidden",
+      errorCategory: "auth",
+    });
+  });
+
+  it("formats JSON HTTP error bodies when plain text is unavailable", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ error: "Bad query" }, 400));
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "GraphQL HTTP 400: {\"error\":\"Bad query\"}",
+      errorCategory: "graphql",
+    });
+  });
+
+  it("returns a pagination error when another page is advertised without an endCursor", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    mockFetch.mockResolvedValue(jsonResponse({
+      data: {
+        user: {
+          login: "corp_user",
+          name: null,
+          avatarUrl: "https://example.com/avatar.png",
+          contributionsCollection: {
+            contributionCalendar: { totalContributions: 0, weeks: [] },
+            pullRequestContributions: {
+              totalCount: 0,
+              nodes: [],
+              pageInfo: {
+                hasNextPage: true,
+                endCursor: null,
+              },
+            },
+            pullRequestReviewContributions: { totalCount: 0 },
+            issueContributions: { totalCount: 0 },
+          },
+          repositories: { totalCount: 0, nodes: [] },
+        },
+      },
+    }));
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "GraphQL pagination error: missing endCursor",
+      errorCategory: "graphql",
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[cli] GraphQL pagination error for corp_user: missing endCursor",
+    );
+    errorSpy.mockRestore();
+  });
+
+  it("returns the second-page transport failure immediately", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "corp_user",
+            name: "Corp User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 1, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 1,
+                nodes: [],
+                pageInfo: {
+                  hasNextPage: true,
+                  endCursor: "cursor-1",
+                },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        text: async () => "Bad gateway",
+      });
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "GraphQL HTTP 502: Bad gateway",
+      errorCategory: "server",
+    });
+  });
+
+  it("returns a graphql error when a paginated response loses the user object", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "corp_user",
+            name: "Corp User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 1, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 1,
+                nodes: [],
+                pageInfo: {
+                  hasNextPage: true,
+                  endCursor: "cursor-1",
+                },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        errors: [{ message: "No longer visible" }],
+        data: { user: null },
+      }));
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result).toEqual({
+      ok: false,
+      error: "GitHub user not found or inaccessible",
+      errorCategory: "graphql",
+    });
+  });
+
+  it("uses default pagination info when a follow-up page omits it", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "corp_user",
+            name: "Corp User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 2, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 2,
+                nodes: [],
+                pageInfo: {
+                  hasNextPage: true,
+                  endCursor: "cursor-1",
+                },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "corp_user",
+            name: "Corp User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 2, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 2,
+                nodes: [{
+                  pullRequest: {
+                    additions: 5,
+                    deletions: 1,
+                    changedFiles: 1,
+                    merged: true,
+                  },
+                }],
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+          },
+        },
+      }));
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    expect(result.stats.prsMergedCount).toBe(1);
+  });
+
+  it("handles missing ownedRepos by defaulting to an empty array", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      data: {
+        user: {
+          login: "corp_user",
+          name: null,
+          avatarUrl: "https://example.com/avatar.png",
+          contributionsCollection: {
+            contributionCalendar: { totalContributions: 0, weeks: [] },
+            pullRequestContributions: {
+              totalCount: 0,
+              nodes: [],
+            },
+            pullRequestReviewContributions: { totalCount: 0 },
+            issueContributions: { totalCount: 0 },
+          },
+          repositories: { totalCount: 0, nodes: [] },
+        },
+      },
+    }));
+
+    const result = await fetchEmuStats("corp_user", "ghp_token");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    expect(result.stats.totalStars).toBe(0);
+    expect(result.stats.totalForks).toBe(0);
+    expect(result.stats.totalWatchers).toBe(0);
+  });
 });
