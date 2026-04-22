@@ -52,11 +52,14 @@ describe("insights fallbacks", () => {
   });
 
   it("uses 0 fallbacks when subtitle capture groups are missing", () => {
-    const matchSpy = vi.spyOn(String.prototype, "match").mockImplementation(function (pattern: string | RegExp) {
-      if (pattern instanceof RegExp && pattern.source.includes("\\s+messages")) {
+    const matchSpy = vi.spyOn(String.prototype, "match").mockImplementation(function (
+      matcher: { [Symbol.match](string: string): RegExpMatchArray | null },
+    ) {
+      const pattern = matcher as RegExp;
+      if (pattern.source.includes("\\s+messages")) {
         return [" messages", undefined] as unknown as RegExpMatchArray;
       }
-      if (pattern instanceof RegExp && pattern.source.includes("\\s+sessions")) {
+      if (pattern.source.includes("\\s+sessions")) {
         return [" sessions", undefined] as unknown as RegExpMatchArray;
       }
       return null;
@@ -73,8 +76,11 @@ describe("insights fallbacks", () => {
   });
 
   it("uses 0 fallbacks when line-stat capture groups are missing", () => {
-    const matchSpy = vi.spyOn(String.prototype, "match").mockImplementation(function (pattern: string | RegExp) {
-      if (pattern instanceof RegExp && pattern.source.includes("\\+?([\\d,]+)")) {
+    const matchSpy = vi.spyOn(String.prototype, "match").mockImplementation(function (
+      matcher: { [Symbol.match](string: string): RegExpMatchArray | null },
+    ) {
+      const pattern = matcher as RegExp;
+      if (pattern.source.includes("\\+?([\\d,]+)")) {
         return ["+/‑", undefined, undefined] as unknown as RegExpMatchArray;
       }
       return null;

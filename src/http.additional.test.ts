@@ -91,8 +91,10 @@ describe("http helpers", () => {
 
     await requestJson({ url: "https://example.com", method: "POST", body });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(init.body).toBe(body);
+    const calls = fetchMock.mock.calls as unknown[][];
+    const init = calls[0]?.[1] as RequestInit | undefined;
+    expect(init).toBeDefined();
+    expect(init?.body).toBe(body);
   });
 
   it("preserves an existing lowercase content-type header", async () => {
@@ -107,9 +109,11 @@ describe("http helpers", () => {
       body: { ok: true },
     });
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
-    expect(init.headers["content-type"]).toBe("application/custom+json");
-    expect(init.headers["Content-Type"]).toBeUndefined();
+    const calls = fetchMock.mock.calls as unknown[][];
+    const init = calls[0]?.[1] as (RequestInit & { headers: Record<string, string> }) | undefined;
+    expect(init).toBeDefined();
+    expect(init?.headers["content-type"]).toBe("application/custom+json");
+    expect(init?.headers["Content-Type"]).toBeUndefined();
   });
 
   it("returns an empty http failure body when the response text is blank", async () => {

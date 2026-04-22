@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Logger } from "./logger.js";
 
 const mockRequestJson = vi.hoisted(() => vi.fn());
 const mockSpawnDetachedPost = vi.hoisted(() => vi.fn());
@@ -84,7 +85,15 @@ describe("upload catch paths", () => {
   });
 
   it("logs the triggerRecalculate catch path through the optional logger", async () => {
-    const logger = { debug: vi.fn() };
+    const logger: Logger = {
+      info: vi.fn(),
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      time: vi.fn(),
+      timeEnd: vi.fn(() => 0),
+      getTimings: vi.fn(() => ({})),
+    };
     mockRequestJson.mockRejectedValueOnce(new Error("network down"));
 
     await triggerRecalculate("https://example.com", "token", logger);
