@@ -116,7 +116,7 @@ interface FetchEmuOptions {
   logger?: Logger;
 }
 
-export type FetchEmuResult =
+type FetchEmuResult =
   | { ok: true; stats: StatsData }
   | {
       ok: false;

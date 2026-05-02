@@ -2,11 +2,11 @@ import { stripTrailingSlashes } from "./shared.js";
 import { requestJson } from "./http.js";
 import { spawnDetachedPost } from "./background.js";
 
-export type TelemetryCommand = "login" | "merge" | "insights";
-export type TelemetryStage = "auth" | "fetch" | "parse" | "upload" | "complete";
-export type TelemetryErrorCategory = "auth" | "network" | "graphql" | "server" | "unknown";
+type TelemetryCommand = "login" | "merge" | "insights";
+type TelemetryStage = "auth" | "fetch" | "parse" | "upload" | "complete";
+type TelemetryErrorCategory = "auth" | "network" | "graphql" | "server" | "unknown";
 
-export interface TelemetryStats {
+interface TelemetryStats {
   commitsTotal: number;
   reposContributed: number;
   prsMergedCount: number;

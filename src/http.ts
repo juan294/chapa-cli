@@ -1,6 +1,6 @@
 import { normalizeErrorCauseChain } from "./shared.js";
 
-export type RequestFailureCategory =
+type RequestFailureCategory =
   | "timeout"
   | "network"
   | "http"
@@ -17,7 +17,7 @@ export interface RequestFailure {
   chain?: string;
 }
 
-export interface RequestSuccess<T> {
+interface RequestSuccess<T> {
   ok: true;
   status: number;
   data: T;
