@@ -218,36 +218,36 @@ async function handleInsights(
   let data: InsightsUpload | undefined;
   let caught: unknown;
 
-  if (!args.file) {
-    log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
-    throw new CliError("--file is required");
-  }
-
-  if (!handle) {
-    log.error("Error: No personal handle found. Run 'chapa login' first, or pass --handle.");
-    throw new CliError("No personal handle found");
-  }
-
-  if (!authToken) {
-    log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
-    throw new CliError("Not authenticated");
-  }
-
-  const filePath = resolve(args.file);
-  let html: string;
   try {
-    html = readFileSync(filePath, "utf-8");
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      log.error(`Error: File not found: ${filePath}`);
-    } else {
-      log.error(`Error reading file: ${(err as Error).message}`);
+    if (!args.file) {
+      log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
+      throw new CliError("--file is required");
     }
-    throw new CliError("File read error");
-  }
 
-  try {
+    if (!handle) {
+      log.error("Error: No personal handle found. Run 'chapa login' first, or pass --handle.");
+      throw new CliError("No personal handle found");
+    }
+
+    if (!authToken) {
+      log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
+      throw new CliError("Not authenticated");
+    }
+
+    const filePath = resolve(args.file);
+    let html: string;
+    try {
+      html = readFileSync(filePath, "utf-8");
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        log.error(`Error: File not found: ${filePath}`);
+      } else {
+        log.error(`Error reading file: ${(err as Error).message}`);
+      }
+      throw new CliError("File read error");
+    }
+
     log.info("Parsing insights report...");
     log.time("parse");
     try {
@@ -280,10 +280,10 @@ async function handleInsights(
     });
     uploadMs = log.timeEnd("upload");
 
-  // Trigger recalculate (non-blocking, fire-and-forget)
-  if (result.success) {
-    insightsModule.queueRecalculate(serverUrl, authToken, { insecure: args.insecure });
-  }
+    // Trigger recalculate (non-blocking, fire-and-forget)
+    if (result.success) {
+      insightsModule.queueRecalculate(serverUrl, authToken, { insecure: args.insecure });
+    }
 
     totalMs = log.timeEnd("total");
 
