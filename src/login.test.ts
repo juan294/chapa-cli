@@ -20,12 +20,63 @@ const loginOpts = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("getBrowserLaunchSpec", () => {
-  it("avoids shell-based browser launch on Windows", () => {
+  // SE-L1: shell injection hardening — all platforms must use shell: false
+  it("uses shell: false on Windows to prevent shell injection (SE-L1)", () => {
+    const spec = getBrowserLaunchSpec("https://example.com", "win32");
+    expect(spec.shell).toBe(false);
+  });
+
+  it("uses rundll32.exe on Windows with URL as a separate argument", () => {
     expect(getBrowserLaunchSpec("https://example.com", "win32")).toEqual({
       command: "rundll32.exe",
       args: ["url.dll,FileProtocolHandler", "https://example.com"],
       shell: false,
     });
+  });
+
+  it("does not interpolate the URL into a shell string on Windows", () => {
+    // A URL with shell metacharacters must never be joined into a single arg
+    const url = "https://example.com?session=abc&foo=bar";
+    const spec = getBrowserLaunchSpec(url, "win32");
+    expect(spec.shell).toBe(false);
+    // The URL must appear as its own element in args, not merged with the command
+    expect(spec.args).toContain(url);
+    // The command itself must not contain the URL
+    expect(spec.command).not.toContain(url);
+  });
+
+  it("uses shell: false on macOS", () => {
+    const spec = getBrowserLaunchSpec("https://example.com", "darwin");
+    expect(spec.shell).toBe(false);
+  });
+
+  it("uses 'open' command on macOS with URL as a separate argument", () => {
+    expect(getBrowserLaunchSpec("https://example.com", "darwin")).toEqual({
+      command: "open",
+      args: ["https://example.com"],
+      shell: false,
+    });
+  });
+
+  it("uses shell: false on Linux", () => {
+    const spec = getBrowserLaunchSpec("https://example.com", "linux");
+    expect(spec.shell).toBe(false);
+  });
+
+  it("uses 'xdg-open' on Linux with URL as a separate argument", () => {
+    expect(getBrowserLaunchSpec("https://example.com", "linux")).toEqual({
+      command: "xdg-open",
+      args: ["https://example.com"],
+      shell: false,
+    });
+  });
+
+  it("shell is false on all supported platforms", () => {
+    const platforms = ["win32", "darwin", "linux"] as const;
+    for (const platform of platforms) {
+      const spec = getBrowserLaunchSpec("https://example.com", platform);
+      expect(spec.shell, `shell must be false on ${platform}`).toBe(false);
+    }
   });
 });
 
