@@ -1037,6 +1037,25 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("--file is required");
   });
 
+  it("sends failure telemetry when --file is missing for insights", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights" }));
+    mockLoadConfig.mockReturnValue({ token: "tok", handle: "user", server: "https://s.com" });
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+    );
+  });
+
   // ── insights: missing personal handle ─────────────────────────────
 
   it("exits 1 when insights has no personal handle", async () => {
@@ -1049,6 +1068,25 @@ describe("index.ts command dispatch", () => {
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("No personal handle found");
     expect(output).toContain("chapa login");
+  });
+
+  it("sends failure telemetry when personal handle is missing for insights", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights", file: "report.html" }));
+    mockLoadConfig.mockReturnValue(null);
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+    );
   });
 
   // ── insights: missing auth token ──────────────────────────────────
@@ -1065,6 +1103,27 @@ describe("index.ts command dispatch", () => {
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Not authenticated");
     expect(output).toContain("chapa login");
+  });
+
+  it("sends failure telemetry when auth token is missing for insights", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "juan294" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+    );
   });
 
   it("surfaces config corruption instead of treating insights as logged out", async () => {
@@ -1110,6 +1169,30 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("File not found");
+  });
+
+  it("sends failure telemetry when insights file cannot be read", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "nonexistent.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+    err.code = "ENOENT";
+    mockReadFileSync.mockImplementation(() => { throw err; });
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+    );
   });
 
   // ── insights: invalid HTML (no sessions) ───────────────────────────────
