@@ -15,7 +15,7 @@ interface ChartCards {
   responseTime: Element | null;
 }
 
-function collectChartCards(doc: Document): ChartCards {
+function collectChartCards(chartCardElements: Iterable<Element>): ChartCards {
   const cards: ChartCards = {
     toolUsage: null,
     sessionTypes: null,
@@ -27,7 +27,7 @@ function collectChartCards(doc: Document): ChartCards {
     responseTime: null,
   };
 
-  for (const card of doc.querySelectorAll(".chart-card")) {
+  for (const card of chartCardElements) {
     const title = card.querySelector(".chart-title")?.textContent?.trim() ?? "";
 
     if (!cards.toolUsage && title.startsWith("Top Tools Used")) {
@@ -123,7 +123,7 @@ function parseLinesStat(text: string): { added: number; deleted: number } {
   };
 }
 
-function extractVolumeStats(doc: Document): {
+function extractVolumeStats(stats: Iterable<Element>): {
   messages: number;
   linesAdded: number;
   linesDeleted: number;
@@ -140,7 +140,6 @@ function extractVolumeStats(doc: Document): {
     msgsPerDay: 0,
   };
 
-  const stats = doc.querySelectorAll(".stats-row .stat");
   for (const stat of stats) {
     const value = stat.querySelector(".stat-value")?.textContent?.trim() ?? "";
     const label = stat.querySelector(".stat-label")?.textContent?.trim().toLowerCase() ?? "";
@@ -258,15 +257,32 @@ function mapSatisfaction(chart: Record<string, number>): {
 export function parseInsightsHtml(html: string): InsightsUpload {
   const { document: doc } = parseHTML(html);
 
-  const subtitleEl = doc.querySelector(".subtitle");
+  // Single-pass: collect all needed node types in one querySelectorAll traversal,
+  // then partition by class rather than rescanning the DOM per section.
+  const allNodes = doc.querySelectorAll(".subtitle, .stats-row .stat, .chart-card");
+  const statNodes: Element[] = [];
+  const chartCardNodes: Element[] = [];
+  let subtitleEl: Element | null = null;
+
+  for (const node of allNodes) {
+    if (node.classList.contains("subtitle")) {
+      if (!subtitleEl) subtitleEl = node;
+    } else if (node.classList.contains("chart-card")) {
+      chartCardNodes.push(node);
+    } else {
+      // .stat nodes inside .stats-row
+      statNodes.push(node);
+    }
+  }
+
   const subtitle = parseSubtitle(subtitleEl?.textContent ?? "");
 
-  const volume = extractVolumeStats(doc);
+  const volume = extractVolumeStats(statNodes);
   if (volume.messages === 0 && subtitle.messages > 0) {
     volume.messages = subtitle.messages;
   }
 
-  const cards = collectChartCards(doc);
+  const cards = collectChartCards(chartCardNodes);
   const toolUsage = extractBarChart(cards.toolUsage);
   const totalToolCalls = Object.values(toolUsage).reduce((a, b) => a + b, 0);
 

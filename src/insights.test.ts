@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseHTML } from "linkedom";
 import {
   parseInsightsHtml,
   queueRecalculate,
@@ -261,6 +262,32 @@ describe("parseInsightsHtml", () => {
     expect(keys).toContain("toolErrors");
     expect(keys).toContain("totalSessions");
     expect(keys).toContain("totalToolCalls");
+  });
+
+  it("performs exactly 1 full-document querySelectorAll call (single-pass contract)", () => {
+    // The optimized implementation collects subtitle, stats, and chart-card nodes in a single
+    // combined querySelectorAll selector so the DOM is traversed only once at the document level.
+    // We intercept via the shared linkedom Document prototype (all parseHTML calls share it).
+    const { document: doc } = parseHTML(FIXTURE_HTML);
+    const proto = Object.getPrototypeOf(doc) as { querySelectorAll: typeof doc.querySelectorAll };
+    const originalQSA = proto.querySelectorAll;
+    let docQsaCalls = 0;
+
+    proto.querySelectorAll = function (this: Document, selector: string) {
+      if ((this as unknown as { nodeType: number }).nodeType === 9) {
+        docQsaCalls++;
+      }
+      return originalQSA.call(this, selector);
+    };
+
+    try {
+      parseInsightsHtml(FIXTURE_HTML);
+    } finally {
+      proto.querySelectorAll = originalQSA;
+    }
+
+    // Single-pass: exactly 1 doc-level querySelectorAll for the combined selector.
+    expect(docQsaCalls).toBe(1);
   });
 });
 
