@@ -391,7 +391,6 @@ export async function triggerRecalculate(
       method: "POST",
       token,
       timeoutMs: 30_000,
-      fallbackData: {},
     });
     if (res.ok) {
       logger?.debug("Impact score recalculated.");

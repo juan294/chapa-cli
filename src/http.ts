@@ -96,11 +96,27 @@ function parseBodyText(raw: string): { body?: unknown; text?: string } {
   }
 }
 
+function isLocalUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 async function makeRequest(
   opts: RequestOptions<unknown>,
 ): Promise<RequestResult<Response>> {
   const headers = { ...(opts.headers ?? {}) };
   if (opts.token) {
+    if (!opts.url.startsWith("https://") && !isLocalUrl(opts.url)) {
+      return {
+        ok: false,
+        category: "network",
+        message: "Refusing to send credentials over non-HTTPS connection.",
+      };
+    }
     headers.Authorization = `Bearer ${opts.token}`;
   }
 

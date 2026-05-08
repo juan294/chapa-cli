@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { uploadSupplementalStats } from "./upload";
-import { uploadInsights } from "./insights";
+import { uploadInsights, triggerRecalculate } from "./insights";
 import type { InsightsUpload, StatsData } from "./shared";
 
 const mockFetch = vi.fn();
@@ -299,5 +299,91 @@ describe("uploadInsights write contract", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Upload failed: Invalid JSON response");
+  });
+});
+
+describe("HTTPS enforcement (#95)", () => {
+  beforeEach(() => {
+    mockFetch.mockClear();
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects upload over plain http with a token", async () => {
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "http://chapa.thecreativetoken.com",
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("non-HTTPS");
+  });
+
+  it("allows upload over https", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "https://chapa.thecreativetoken.com",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("allows upload over http://localhost", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "http://localhost:3000",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("allows upload over http://127.0.0.1", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
+
+    const result = await uploadSupplementalStats({
+      targetHandle: "juan294",
+      sourceHandle: "corp_user",
+      stats: makeStats(),
+      token: "gho_personal",
+      serverUrl: "http://127.0.0.1:3000",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects uploadInsights over plain http with a token", async () => {
+    const result = await uploadInsights({
+      data: makeInsightsData(),
+      token: "gho_personal",
+      serverUrl: "http://chapa.thecreativetoken.com",
+    });
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("non-HTTPS");
+  });
+
+  it("triggerRecalculate does not throw on http:// URL (fire-and-forget)", async () => {
+    await expect(
+      triggerRecalculate("http://chapa.thecreativetoken.com", "token"),
+    ).resolves.toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
