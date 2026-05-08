@@ -124,8 +124,35 @@ function handlePollFailure(
   return serverErrorLogged;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function assertHttpsServerUrl(serverUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(serverUrl);
+  } catch {
+    throw new Error(`Invalid server URL: ${serverUrl}`);
+  }
+
+  if (parsed.protocol === "https:") {
+    return;
+  }
+
+  if (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname)) {
+    return;
+  }
+
+  throw new Error(
+    `--server must use HTTPS. Refusing to start device flow against insecure server ${serverUrl}. Use HTTPS, or http://localhost only for local development.`,
+  );
+}
+
 export async function login(serverUrl: string, opts: LoginOptions = {}): Promise<void> {
   const { verbose = false, insecure = false, _openBrowser = openBrowser, _waitForEnter = waitForEnter } = opts;
+
+  assertHttpsServerUrl(serverUrl);
 
   const baseUrl = stripTrailingSlashes(serverUrl);
   const sessionId = randomUUID();
