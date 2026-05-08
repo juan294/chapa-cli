@@ -576,6 +576,84 @@ describe("fetchEmuStats", () => {
     errorSpy.mockRestore();
   });
 
+  it("does not silently truncate weight/line metrics when totalCount > 100 (#92)", async () => {
+    // Regression: before pagination, users with >100 PRs got understated badge metrics
+    // because weight, linesAdded, and linesDeleted were only computed from the ≤100 nodes
+    // returned by the first page. This test uses totalCount:150 to represent such a user.
+    const page1Nodes = Array.from({ length: 100 }, () => ({
+      pullRequest: { additions: 10, deletions: 5, changedFiles: 1, merged: true },
+    }));
+    const page2Nodes = Array.from({ length: 50 }, () => ({
+      pullRequest: { additions: 20, deletions: 8, changedFiles: 2, merged: true },
+    }));
+
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "heavy_user",
+            name: "Heavy User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 150, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 150,
+                nodes: page1Nodes,
+                pageInfo: { hasNextPage: true, endCursor: "cursor-page-1" },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        data: {
+          user: {
+            login: "heavy_user",
+            name: "Heavy User",
+            avatarUrl: "https://example.com/avatar.png",
+            contributionsCollection: {
+              contributionCalendar: { totalContributions: 150, weeks: [] },
+              pullRequestContributions: {
+                totalCount: 150,
+                nodes: page2Nodes,
+                pageInfo: { hasNextPage: false, endCursor: "cursor-page-2" },
+              },
+              pullRequestReviewContributions: { totalCount: 0 },
+              issueContributions: { totalCount: 0 },
+            },
+            repositories: { totalCount: 0, nodes: [] },
+            ownedRepos: { nodes: [] },
+          },
+        },
+      }));
+
+    const result = await fetchEmuStats("heavy_user", "ghp_token");
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+
+    // All 150 merged PRs must be reflected in the metrics
+    expect(result.stats.prsMergedCount).toBe(150);
+
+    // linesAdded: page1 → 100*10=1000, page2 → 50*20=1000, total=2000
+    expect(result.stats.linesAdded).toBe(2000);
+    // linesDeleted: page1 → 100*5=500, page2 → 50*8=400, total=900
+    expect(result.stats.linesDeleted).toBe(900);
+
+    // prsMergedWeight must be capped at PR_WEIGHT_AGG_CAP but should have been
+    // contributed to by all 150 PRs — assert it is the cap (120) given the volume
+    expect(result.stats.prsMergedWeight).toBe(120);
+
+    // Cursor from page 1 must be forwarded to page 2
+    const page2Body = JSON.parse(mockFetch.mock.calls[1]![1]!.body as string) as {
+      variables: { prCursor?: string | null };
+    };
+    expect(page2Body.variables.prCursor).toBe("cursor-page-1");
+  });
+
   it("maps timeout failures into a stable error path", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const timeoutError = new Error("The operation was aborted due to timeout");
