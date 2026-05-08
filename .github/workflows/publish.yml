@@ -34,6 +34,14 @@ jobs:
             exit 1
           fi
 
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          EXPECTED_TAG="v${PKG_VERSION}"
+          if [ "$RELEASE_TAG" != "$EXPECTED_TAG" ]; then
+            echo "::error::Release tag '${RELEASE_TAG}' does not match package.json version '${PKG_VERSION}' (expected tag '${EXPECTED_TAG}')."
+            exit 1
+          fi
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v6
