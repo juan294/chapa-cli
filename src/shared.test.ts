@@ -256,6 +256,36 @@ describe("buildStatsFromRaw", () => {
     expect(stats.commitsTotal).toBe(142);
   });
 
+  // --- PR pagination correctness ---
+
+  it("computes all PR metrics from nodes (not totalCount), enabling correct pagination (#92)", () => {
+    // Regression test: when totalCount > nodes.length (i.e. paginated), metrics must
+    // reflect the actual nodes passed in — callers are responsible for accumulating all
+    // pages before calling buildStatsFromRaw. This test verifies that buildStatsFromRaw
+    // does NOT use totalCount for any weight/line metric.
+    const raw = makeRawData({
+      pullRequests: {
+        totalCount: 150, // simulates a user with 150 PRs total (would have been truncated at 100 before fix)
+        nodes: [
+          // Only 3 nodes passed in — these represent a partial set as a unit-test proxy
+          { additions: 100, deletions: 50, changedFiles: 5, merged: true },
+          { additions: 200, deletions: 75, changedFiles: 3, merged: true },
+          { additions: 999, deletions: 888, changedFiles: 10, merged: false }, // excluded
+        ],
+      },
+    });
+    const stats = buildStatsFromRaw(raw);
+
+    // prsMergedCount must come from nodes (2 merged), not totalCount (150)
+    expect(stats.prsMergedCount).toBe(2);
+    // lines and weight are only from the 2 merged nodes
+    expect(stats.linesAdded).toBe(300); // 100 + 200
+    expect(stats.linesDeleted).toBe(125); // 50 + 75
+    expect(stats.prsMergedWeight).toBeGreaterThan(0);
+    // Confirm totalCount is NOT used for prsMergedCount
+    expect(stats.prsMergedCount).not.toBe(150);
+  });
+
   // --- PR filtering and aggregation ---
 
   it("only counts merged PRs", () => {
