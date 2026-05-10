@@ -230,3 +230,68 @@ describe("login internals", () => {
     errorSpy.mockRestore();
   });
 });
+
+describe("assertHttpsServerUrl guard (via login)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+    mockRequestJson.mockResolvedValue({
+      ok: true,
+      data: { status: "approved", token: "tok", handle: "juan294" },
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function advancePoll() {
+    await Promise.resolve();
+    return vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS + 10);
+  }
+
+  // Line 136: invalid URL throws before any polling
+  it("throws on an unparseable server URL", async () => {
+    await expect(login("not-a-valid-url")).rejects.toThrow("Invalid server URL: not-a-valid-url");
+    expect(mockRequestJson).not.toHaveBeenCalled();
+  });
+
+  // Line 147: plain http with a non-loopback host is rejected
+  it("throws when server URL is http with a non-loopback host", async () => {
+    await expect(login("http://example.com")).rejects.toThrow("--server must use HTTPS");
+    expect(mockRequestJson).not.toHaveBeenCalled();
+  });
+
+  // Lines 143-144: http + localhost is allowed
+  it("allows http://localhost for local development", async () => {
+    const p = login("http://localhost:3000", { _openBrowser: vi.fn(), _waitForEnter: vi.fn().mockResolvedValue(undefined) });
+    await advancePoll();
+    await p;
+    expect(mockSaveConfig).toHaveBeenCalledOnce();
+  });
+
+  // Line 128: hostname.endsWith(".localhost") branch
+  it("allows http with a .localhost subdomain", async () => {
+    const p = login("http://app.localhost:3000", { _openBrowser: vi.fn(), _waitForEnter: vi.fn().mockResolvedValue(undefined) });
+    await advancePoll();
+    await p;
+    expect(mockSaveConfig).toHaveBeenCalledOnce();
+  });
+
+  // Line 128: hostname === "127.0.0.1" branch
+  it("allows http://127.0.0.1 as loopback", async () => {
+    const p = login("http://127.0.0.1:3000", { _openBrowser: vi.fn(), _waitForEnter: vi.fn().mockResolvedValue(undefined) });
+    await advancePoll();
+    await p;
+    expect(mockSaveConfig).toHaveBeenCalledOnce();
+  });
+
+  // Line 128: hostname === "::1" branch
+  it("allows http://[::1] as loopback IPv6", async () => {
+    const p = login("http://[::1]:3000", { _openBrowser: vi.fn(), _waitForEnter: vi.fn().mockResolvedValue(undefined) });
+    await advancePoll();
+    await p;
+    expect(mockSaveConfig).toHaveBeenCalledOnce();
+  });
+});
