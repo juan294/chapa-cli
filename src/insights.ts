@@ -443,4 +443,6 @@ export {
   parseNumeric as _parseNumeric,
   parseSubtitle as _parseSubtitle,
   parseLinesStat as _parseLinesStat,
+  parseMultiClauding as _parseMultiClauding,
+  parseResponseTime as _parseResponseTime,
 };

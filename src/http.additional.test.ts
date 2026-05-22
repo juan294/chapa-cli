@@ -7,6 +7,18 @@ afterEach(() => {
   vi.doUnmock("./shared.js");
 });
 
+describe("isLocalUrl catch branch (http.ts:119)", () => {
+  it("treats an unparseable URL as non-local and refuses credentials", async () => {
+    const { requestJson } = await import("./http.js");
+    const result = await requestJson({ url: "not-a-valid-url", token: "tok" });
+    expect(result).toEqual({
+      ok: false,
+      category: "network",
+      message: "Refusing to send credentials over non-HTTPS connection.",
+    });
+  });
+});
+
 describe("http helpers", () => {
   it("classifies non-Error throws as network failures", async () => {
     const { requestJson } = await import("./http.js");
