@@ -7,7 +7,7 @@ settings:
 overrides:
   rollup@>=4.0.0 <4.59.0: '>=4.59.0'
   picomatch@>=4.0.0 <4.0.4: '>=4.0.4'
-  vite: ^8.0.14
+  vite: ^8.0.16
   postcss: '>=8.5.10'
 
 importers:
@@ -519,7 +519,7 @@ packages:
     resolution: {integrity: sha512-LEiN/xe4OSIbKe9HQIp5OC24agGD9J5CnmMgsLohVVoOPWL9a2sBoR6VBx43jQZb7Kr1l4RCuyCJzcAa0+dojw==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^8.0.14
+      vite: ^8.0.16
     peerDependenciesMeta:
       msw:
         optional: true
@@ -1050,7 +1050,7 @@ packages:
       '@vitest/ui': 4.1.8
       happy-dom: '*'
       jsdom: '*'
-      vite: ^8.0.14
+      vite: ^8.0.16
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
