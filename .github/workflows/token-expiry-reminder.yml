@@ -9,6 +9,8 @@ on:
 jobs:
   check-expiry:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Check if token expiry is approaching
         env:
