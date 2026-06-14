@@ -37,6 +37,17 @@ jobs:
           fi
         id: check
 
+      - name: Create token-rotation label if missing
+        if: steps.check.outputs.status == 'warning' || steps.check.outputs.status == 'expired'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "token-rotation" \
+            --repo ${{ github.repository }} \
+            --description "NPM token rotation reminder" \
+            --color "D93F0B" \
+            2>/dev/null || true
+
       - name: Create reminder issue
         if: steps.check.outputs.status == 'warning' || steps.check.outputs.status == 'expired'
         env:
@@ -77,15 +88,3 @@ jobs:
             --title "$title" \
             --body "$body" \
             --label "token-rotation"
-
-      - name: Create token-rotation label if missing
-        if: steps.check.outputs.status == 'warning' || steps.check.outputs.status == 'expired'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh label create "token-rotation" \
-            --repo ${{ github.repository }} \
-            --description "NPM token rotation reminder" \
-            --color "D93F0B" \
-            2>/dev/null || true
