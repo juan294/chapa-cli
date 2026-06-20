@@ -19,7 +19,10 @@ export function createLogger(opts: LoggerOptions): Logger {
 
   return {
     info(msg: string): void {
-      if (opts.json) return;
+      if (opts.json) {
+        if (opts.verbose) process.stderr.write(msg + "\n");
+        return;
+      }
       process.stdout.write(msg + "\n");
     },
 

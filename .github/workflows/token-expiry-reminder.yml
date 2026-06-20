@@ -14,8 +14,9 @@ jobs:
     steps:
       - name: Check if token expiry is approaching
         env:
-          # Update this date when you rotate the token
-          TOKEN_EXPIRY: "2026-06-18"
+          # Set the NPM_TOKEN_EXPIRY repository variable (Settings → Variables → Actions)
+          # when rotating the token — no workflow code change required.
+          TOKEN_EXPIRY: ${{ vars.NPM_TOKEN_EXPIRY || '1970-01-01' }}
           WARN_DAYS_BEFORE: 14
         run: |
           expiry=$(date -d "$TOKEN_EXPIRY" +%s)
@@ -69,7 +70,7 @@ jobs:
           1. Go to https://www.npmjs.com → Access Tokens → Generate New Token (Granular)
           2. Name: \`chapa-cli-github-actions\`, Packages: **Read and write**, Expiration: **90 days**
           3. Run: \`gh secret set NPM_TOKEN --repo juan294/chapa-cli\` and paste the new token
-          4. Update \`TOKEN_EXPIRY\` in \`.github/workflows/token-expiry-reminder.yml\` to the new date
+          4. Update the \`NPM_TOKEN_EXPIRY\` repository variable (Settings → Variables → Actions) to the new expiry date
           5. Close this issue"
           else
             title="NPM_TOKEN expires in ${{ steps.check.outputs.days }} days — rotate soon"
@@ -79,7 +80,7 @@ jobs:
           1. Go to https://www.npmjs.com → Access Tokens → Generate New Token (Granular)
           2. Name: \`chapa-cli-github-actions\`, Packages: **Read and write**, Expiration: **90 days**
           3. Run: \`gh secret set NPM_TOKEN --repo juan294/chapa-cli\` and paste the new token
-          4. Update \`TOKEN_EXPIRY\` in \`.github/workflows/token-expiry-reminder.yml\` to the new date
+          4. Update the \`NPM_TOKEN_EXPIRY\` repository variable (Settings → Variables → Actions) to the new expiry date
           5. Close this issue"
           fi
 

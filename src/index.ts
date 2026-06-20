@@ -1,13 +1,8 @@
 import { parseArgs, DEFAULT_SERVER } from "./cli.js";
 import type { CliArgs } from "./cli.js";
-import { resolveToken } from "./auth.js";
-import { fetchEmuStats } from "./fetch-emu.js";
-import { uploadSupplementalStats } from "./upload.js";
 import { loadConfig, deleteConfig } from "./config.js";
-import { login } from "./login.js";
 import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
-import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
 import { queueTelemetry, classifyError, EMPTY_TELEMETRY_STATS } from "./telemetry.js";
 import type { TelemetryPayload } from "./telemetry.js";
@@ -157,6 +152,7 @@ async function handleLogin(args: CliArgs): Promise<void> {
   let caught: unknown;
 
   try {
+    const { login } = await import("./login.js");
     await login(args.server, { verbose: args.verbose, insecure: args.insecure });
     succeeded = true;
   } catch (err) {
@@ -394,6 +390,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
   }
 
   // Resolve tokens — CLI config token takes priority over GITHUB_TOKEN for auth
+  const { resolveToken } = await import("./auth.js");
   const emuToken = resolveToken(args.emuToken, "GITHUB_EMU_TOKEN");
   if (!emuToken) {
     log.error("Error: EMU token required. Use --emu-token or set GITHUB_EMU_TOKEN.");
@@ -405,6 +402,10 @@ async function handleMerge(args: CliArgs): Promise<void> {
     log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
     throw new CliError("Not authenticated");
   }
+
+  const { fetchEmuStats } = await import("./fetch-emu.js");
+  const { uploadSupplementalStats } = await import("./upload.js");
+  const { formatStatsSummary } = await import("./shared.js");
 
   try {
     log.info(`Fetching stats for EMU account: ${emuHandle}...`);
