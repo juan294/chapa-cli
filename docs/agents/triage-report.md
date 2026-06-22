@@ -15,7 +15,7 @@ None confirmed. Recent `cc-rpi-update` and `health-check` error logs were empty,
 ## Action Items Completed
 | # | Item | Source Report | Tests Added | Status |
 |---|------|--------------|-------------|--------|
-| 1 | Recorded `cc-rpi-update` authentication blocker: report contained only `Not logged in - Please run /login`; no code change available from repo context | cc-rpi-update | N/A | Done |
+| 1 | Reran `cc-rpi-update` manually; agent authenticated successfully and confirmed the project is already synced to cc-rpi v1.21.0 at `ce18f5de` | cc-rpi-update | N/A | Done |
 | 2 | Updated `vitest` and `@vitest/coverage-v8` from 4.1.8 to 4.1.9 | health-check / Dependabot #114 | N/A | Done |
 | 3 | Updated `@types/node` from 25.9.3 to 26.0.0 after user approval to handle major updates today | health-check / Dependabot #115 | N/A | Done |
 | 4 | Updated GitHub workflow checkout steps from `actions/checkout@v6` to `actions/checkout@v7` after user approval to handle major updates today | Dependabot #113 | N/A | Done |
@@ -41,6 +41,7 @@ None confirmed. Recent `cc-rpi-update` and `health-check` error logs were empty,
 - [x] GitHub CI green
 - [x] GitHub CodeQL green
 - [x] Dependabot update runs green
+- [x] Manual `scripts/agents/cc-rpi-update.sh` run completed successfully; no blueprint updates available
 
 ## Carried Items
-- `cc-rpi-update` still requires an external `/login` in the environment that runs that agent. The repo contains no code-level fix for this authentication state.
+- None.

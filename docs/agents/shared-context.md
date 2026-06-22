@@ -16,10 +16,10 @@ Cross-agent intelligence file. Every agent reads before starting, writes after f
 <!-- ENTRY:START agent=triage timestamp=2026-06-22T05:01:42Z -->
 ## Triage -- 2026-06-22
 - **Reports processed**: 2 (cc-rpi-update, health-check)
-- **Action items resolved**: 4 (cc-rpi auth blocker recorded; vitest ecosystem 4.1.9; @types/node 26.0.0; actions/checkout v7)
-- **Summary**: Batched all open Dependabot updates into commit `900502c` on `develop`; local verification, GitHub CI, CodeQL, and Dependabot update runs are green.
+- **Action items resolved**: 4 (cc-rpi manual rerun confirmed already up to date; vitest ecosystem 4.1.9; @types/node 26.0.0; actions/checkout v7)
+- **Summary**: Batched all open Dependabot updates into commit `900502c` on `develop`; local verification, GitHub CI, CodeQL, Dependabot update runs, and manual cc-rpi update check are green.
 **Cross-agent recommendations:**
-- [cc-rpi-update]: The report contained only `Not logged in - Please run /login`; the scheduled agent environment needs authentication before the next cycle can produce a real sync report.
+- [cc-rpi-update]: Manual rerun authenticated successfully and reports the project is already synced to cc-rpi v1.21.0 at `ce18f5de`; no repo updates required.
 - [health-check]: Dependency drift is clear after the batched update. Future cycles should see `vitest`, `@vitest/coverage-v8`, and `@types/node` current against the locked versions.
 <!-- ENTRY:END -->
 
