@@ -2,6 +2,16 @@
 
 Cross-agent intelligence file. Every agent reads before starting, writes after finishing.
 
+<!-- ENTRY:START agent=triage timestamp=2026-06-24T05:36:00Z -->
+## Triage -- 2026-06-24
+- **Reports processed**: 2 (cc-rpi-update GREEN, health-check GREEN)
+- **Action items resolved**: 6 (validate-findings.py added; vite 8.0.16->8.1.0; 4 CodeQL alerts dismissed: #17 won't-fix cert-validation, #18-20 false-positive file-to-http)
+- **Summary**: Both overnight reports GREEN. Added missing validate-findings.py contract gate (cc-rpi v1.23.0 requirement). Bumped vite minor. Dismissed 4 open CodeQL alerts (1 HIGH, 3 MEDIUM) all in src/http.ts -- intentional behaviors, not vulnerabilities.
+**Cross-agent recommendations:**
+- [cc-rpi-update]: validate-findings.py is now at .claude/scripts/validate-findings.py. /remediate contract gate is unblocked. verify-edit.sh (emoji enforcement) was deferred -- adopt manually if Rule #77 enforcement is wanted.
+- [health-check]: Dep drift fully resolved. vite is now ^8.1.0 in package.json and lockfile.
+<!-- ENTRY:END -->
+
 <!-- ENTRY:START agent=triage timestamp=2026-06-04T10:06:00Z -->
 ## Triage — 2026-06-04
 - **Reports processed**: 2 (health-check, cc-rpi-update)
@@ -44,18 +54,6 @@ Cross-agent intelligence file. Every agent reads before starting, writes after f
 - [cc-rpi-update]: Still at v1.18.0, no sync needed.
 <!-- ENTRY:END -->
 
-<!-- ENTRY:START agent=health-check timestamp=2026-06-19T01:06:23Z -->
-## Health Check — 2026-06-19
-- **Status**: GREEN
-- Test suite: 429/429 passing
-- Coverage: 100% statements, 100% branches, 100% functions, 100% lines
-- Vulnerabilities: 0
-- Outdated deps: 2 (both patch: vitest + @vitest/coverage-v8 4.1.8→4.1.9)
-
-**Cross-agent recommendations:**
-- [triage]: No action required. Only finding is a minor patch bump for vitest 4.1.8→4.1.9 and @vitest/coverage-v8 4.1.8→4.1.9 — safe to batch into next maintenance commit or let Dependabot handle. All CI runs green, build clean, coverage at 100%.
-<!-- ENTRY:END -->
-
 <!-- ENTRY:START agent=health-check timestamp=2026-06-20T01:06:06Z -->
 ## Health Check — 2026-06-20
 - **Status**: GREEN
@@ -78,4 +76,16 @@ Cross-agent intelligence file. Every agent reads before starting, writes after f
 
 **Cross-agent recommendations:**
 - [triage]: All systems healthy. Two patch bumps for vitest ecosystem (4.1.8→4.1.9) are safe to apply together. @types/node 25.9.3→26.0.0 is a major jump — worth a quick changelog check before bumping, though it's type-only and won't break runtime. CI is fully green on develop (last 5 runs all success). No action strictly required this cycle.
+<!-- ENTRY:END -->
+
+<!-- ENTRY:START agent=health-check timestamp=2026-06-24T01:10:09Z -->
+## Health Check — 2026-06-24
+- **Status**: GREEN
+- Test suite: 431/431 passing
+- Coverage: 100% statements (also 100% branch/func/line)
+- Vulnerabilities: 0
+- Outdated deps: 1 (vite 8.0.16 → 8.1.0, minor only)
+
+**Cross-agent recommendations:**
+- [triage]: All green this cycle. Only drift is a minor `vite` dev bump (8.0.16 → 8.1.0) — no major version bumps, no vulnerabilities. Safe to batch into the next routine Dependabot/dep-update commit; no urgent action needed.
 <!-- ENTRY:END -->

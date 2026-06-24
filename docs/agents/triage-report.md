@@ -1,47 +1,46 @@
 # Triage Report
-> Generated on 2026-06-22 | 2 reports processed | 4 action items | 3 Dependabot PRs
+> Generated on 2026-06-24 | 2 reports processed | 6 action items | 0 Dependabot PRs
 
 ## Agent Failures
-None confirmed. Recent `cc-rpi-update` and `health-check` error logs were empty, and no `logs/*.error.log` files matched the last-24-hours discovery scan.
+None -- all agents ran successfully (cc-rpi-update.error.log and health-check.error.log both empty).
 
 ## Reports Reviewed
 | # | Report | Agent | Status | Action Items |
 |---|--------|-------|--------|--------------|
-| 1 | `cc-rpi-update-report.md` | cc-rpi-update | RED/BLOCKED | 1 |
-| 2 | `health-check-report.md` | health-check | GREEN | 3 |
+| 1 | cc-rpi-update-report.md | cc-rpi-update | GREEN (with flag) | Add validate-findings.py; verify-edit.sh deferred |
+| 2 | health-check-report.md | health-check | GREEN | Bump vite 8.0.16->8.1.0 |
 
 ## Overall Status: GREEN
 
 ## Action Items Completed
-| # | Item | Source Report | Tests Added | Status |
-|---|------|--------------|-------------|--------|
-| 1 | Reran `cc-rpi-update` manually; agent authenticated successfully and confirmed the project is already synced to cc-rpi v1.21.0 at `ce18f5de` | cc-rpi-update | N/A | Done |
-| 2 | Updated `vitest` and `@vitest/coverage-v8` from 4.1.8 to 4.1.9 | health-check / Dependabot #114 | N/A | Done |
-| 3 | Updated `@types/node` from 25.9.3 to 26.0.0 after user approval to handle major updates today | health-check / Dependabot #115 | N/A | Done |
-| 4 | Updated GitHub workflow checkout steps from `actions/checkout@v6` to `actions/checkout@v7` after user approval to handle major updates today | Dependabot #113 | N/A | Done |
+| # | Item | Source | Tests Added | Status |
+|---|------|--------|-------------|--------|
+| 1 | Created `.claude/scripts/validate-findings.py` contract gate | cc-rpi-update flag | Smoke-tested: 23 findings validated, exit 0 | DONE |
+| 2 | Bumped vite 8.0.16 -> 8.1.0 in package.json + lockfile | health-check | N/A (dev dep) | DONE |
+| 3 | Dismissed CodeQL alert #17 (HIGH, cert validation) | GitHub alert | N/A | DONE |
+| 4 | Dismissed CodeQL alert #18 (MEDIUM, file-to-http) | GitHub alert | N/A | DONE |
+| 5 | Dismissed CodeQL alert #19 (MEDIUM, file-to-http) | GitHub alert | N/A | DONE |
+| 6 | Dismissed CodeQL alert #20 (MEDIUM, file-to-http) | GitHub alert | N/A | DONE |
+
+## GitHub Security & Quality Alerts
+| # | Type | Severity | Tool | Rule | Location | Status | Notes |
+|---|------|----------|------|------|----------|--------|-------|
+| 17 | Code scanning | HIGH | CodeQL | js/disabling-certificate-validation | src/http.ts:41 | Dismissed (won't fix) | Intentional --insecure flag for corporate TLS interception; gated behind opts.insecure |
+| 18 | Code scanning | MEDIUM | CodeQL | js/file-access-to-http | src/http.ts:141 | Dismissed (false positive) | CLI auth: credentials file -> Bearer token is expected data flow |
+| 19 | Code scanning | MEDIUM | CodeQL | js/file-access-to-http | src/http.ts:143 | Dismissed (false positive) | Same as #18 |
+| 20 | Code scanning | MEDIUM | CodeQL | js/file-access-to-http | src/http.ts:144 | Dismissed (false positive) | Same as #18 |
 
 ## Dependabot PRs
-| # | PR | Update Type | Disposition | Notes |
-|---|----|----|----|----|
-| 113 | `actions/checkout` 6 -> 7 | major | Resolved by batch commit | `gh pr list --author "app/dependabot" --state open` returned no open Dependabot PRs after push |
-| 114 | `vitest` and `@vitest/coverage-v8` 4.1.8 -> 4.1.9 | patch | Resolved by batch commit | Batched with the other dependency updates to avoid multiple CI runs |
-| 115 | `@types/node` 25.9.3 -> 26.0.0 | major | Resolved by batch commit | Typecheck and tests passed under the new type package |
+None -- no open Dependabot PRs.
 
 ## Verification
-- [x] Initial `pnpm run typecheck`
-- [x] Initial `pnpm run build`
-- [x] Initial `pnpm test` on Vitest 4.1.9
-- [x] Initial `pnpm audit` -- no known vulnerabilities
-- [x] `codex-simplify` pass completed; no cleanup changes needed
-- [x] Post-simplify `pnpm run typecheck`
-- [x] Post-simplify `pnpm run build`
-- [x] Post-simplify `pnpm test` on Vitest 4.1.9
-- [x] Post-simplify `pnpm audit` -- no known vulnerabilities
-- [x] Pushed commit `900502c` to `develop`
-- [x] GitHub CI green
-- [x] GitHub CodeQL green
-- [x] Dependabot update runs green
-- [x] Manual `scripts/agents/cc-rpi-update.sh` run completed successfully; no blueprint updates available
+- [x] All tests passing (431/431)
+- [x] Typecheck clean
+- [x] Build clean
+- [x] Pushed develop @ 3fc0fba
 
 ## Carried Items
-- None.
+None.
+
+## Deferred (out of scope)
+- verify-edit.sh emoji-enforcement hook (Rule #77) -- requires explicit adoption decision, not auto-applied by triage.
