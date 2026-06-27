@@ -22,6 +22,7 @@ REQUIRED_FIELDS = [
     "**What's happening:**",
     '**Why it matters:**',
     '**Recommendation:**',
+    '**Regression risk:**',
     '**Expected impact:**',
     '**Effort estimate:**',
 ]
