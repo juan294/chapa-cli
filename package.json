@@ -56,7 +56,7 @@
     "@vitest/coverage-v8": "^4.1.9",
     "linkedom": "^0.18.12",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.1.2",
     "vitest": "^4.1.9"
   },
