@@ -90,7 +90,8 @@ Preserve the standard cc-rpi artifact locations:
 - `docs/research/` -- research documents
 - `docs/plans/` -- implementation plans and phase files
 - `docs/decisions/` -- ADRs and decision records
-- `docs/agents/` -- local operational reports
+- `docs/agents/` -- operational reports (commit policy follows repo
+  visibility per Rule #70: gitignored on public repos, tracked on private)
 
 Respect the phase gates:
 
@@ -110,3 +111,6 @@ describe what exists; do not suggest improvements unless asked.
   can be parallelized
 - Preserve the project's git workflow exactly as described in
   `CLAUDE.md`
+- Preserve the project's branch topology exactly as documented in
+  `CLAUDE.md`, and keep implementation work in isolated worktrees or
+  temporary branches
