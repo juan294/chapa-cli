@@ -316,7 +316,7 @@ describe("index.ts command dispatch", () => {
 
   // ── --insecure ───────────────────────────────────────────────────────
 
-  it("sets NODE_TLS_REJECT_UNAUTHORIZED and warns when --insecure is used", async () => {
+  it("does not globally set NODE_TLS_REJECT_UNAUTHORIZED when --insecure is used", async () => {
     const originalVal = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
     delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 
@@ -324,11 +324,12 @@ describe("index.ts command dispatch", () => {
 
     await runMain();
 
-    expect(process.env.NODE_TLS_REJECT_UNAUTHORIZED).toBe("0");
+    expect(process.env.NODE_TLS_REJECT_UNAUTHORIZED).toBeUndefined();
 
     const allWarns = spyOutput(warnSpy);
-    expect(allWarns).toContain("TLS certificate verification disabled");
     expect(allWarns).toContain("--insecure");
+    expect(allWarns).toContain("Chapa server");
+    expect(allWarns).toContain("GitHub API calls still validate TLS");
 
     // Restore
     if (originalVal !== undefined) {
@@ -351,6 +352,56 @@ describe("index.ts command dispatch", () => {
     // Restore
     if (originalVal !== undefined) {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalVal;
+    }
+  });
+
+  it("forwards insecure: true to uploadSupplementalStats on merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "foo",
+        handle: "juan294",
+        token: "auth-tok",
+        insecure: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 5 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ insecure: true }),
+    );
+  });
+
+  it("does NOT forward insecure to fetchEmuStats (GitHub always validates TLS)", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "foo",
+        handle: "juan294",
+        token: "auth-tok",
+        insecure: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 5 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockFetchEmuStats).toHaveBeenCalled();
+    const fetchEmuCalls = mockFetchEmuStats.mock.calls;
+    for (const callArgs of fetchEmuCalls) {
+      // callArgs[2] is the opts object passed to fetchEmuStats
+      const opts = callArgs[2] as Record<string, unknown> | undefined;
+      if (opts != null) {
+        expect(opts).not.toHaveProperty("insecure");
+      }
     }
   });
 
@@ -382,6 +433,7 @@ describe("index.ts command dispatch", () => {
         errorCategory: undefined,
         timing: expect.objectContaining({ authMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -434,6 +486,7 @@ describe("index.ts command dispatch", () => {
         errorCategory: "network",
         timing: expect.objectContaining({ authMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -628,6 +681,7 @@ describe("index.ts command dispatch", () => {
         stats: expect.objectContaining({ commitsTotal: 0 }),
         timing: expect.objectContaining({ uploadMs: 0 }),
       }),
+      expect.anything(),
     );
     expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
     expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
@@ -699,6 +753,7 @@ describe("index.ts command dispatch", () => {
         targetHandle: "juan294",
         sourceHandle: "corp_user",
       }),
+      expect.anything(),
     );
     expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
   });
@@ -827,6 +882,7 @@ describe("index.ts command dispatch", () => {
         timing: expect.objectContaining({ fetchMs: expect.any(Number) }),
         cliVersion: expect.any(String),
       }),
+      expect.anything(),
     );
     expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
   });
@@ -1008,6 +1064,77 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).not.toHaveBeenCalled();
   });
 
+  it("allows bracketed IPv6 loopback [::1] HTTP servers for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://[::1]:3000",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: "http://[::1]:3000" }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("allows 127.0.0.1 HTTP servers for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://127.0.0.1:3000",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+      expect.objectContaining({ serverUrl: "http://127.0.0.1:3000" }),
+    );
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-loopback HTTP servers (insecure.example.com) for merge", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({
+        command: "merge",
+        emuHandle: "corp_user",
+        handle: "juan294",
+        token: "auth-tok",
+        server: "http://insecure.example.com",
+        serverExplicit: true,
+      }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockResolveToken.mockReturnValue("emu-tok");
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockFetchEmuStats).not.toHaveBeenCalled();
+    const output = loggerOutput(mockLogger.error);
+    expect(output).toContain("HTTPS");
+    expect(output).toContain("localhost");
+  });
+
   it("surfaces config corruption instead of treating merge as logged out", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({ command: "merge", emuHandle: "corp_user" }),
@@ -1037,6 +1164,26 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("--file is required");
   });
 
+  it("sends failure telemetry when --file is missing for insights", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights" }));
+    mockLoadConfig.mockReturnValue({ token: "tok", handle: "user", server: "https://s.com" });
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+      expect.anything(),
+    );
+  });
+
   // ── insights: missing personal handle ─────────────────────────────
 
   it("exits 1 when insights has no personal handle", async () => {
@@ -1049,6 +1196,26 @@ describe("index.ts command dispatch", () => {
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("No personal handle found");
     expect(output).toContain("chapa login");
+  });
+
+  it("sends failure telemetry when personal handle is missing for insights", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "insights", file: "report.html" }));
+    mockLoadConfig.mockReturnValue(null);
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+      expect.anything(),
+    );
   });
 
   // ── insights: missing auth token ──────────────────────────────────
@@ -1065,6 +1232,28 @@ describe("index.ts command dispatch", () => {
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("Not authenticated");
     expect(output).toContain("chapa login");
+  });
+
+  it("sends failure telemetry when auth token is missing for insights", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "report.html", handle: "juan294" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+      expect.anything(),
+    );
   });
 
   it("surfaces config corruption instead of treating insights as logged out", async () => {
@@ -1112,6 +1301,31 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("File not found");
   });
 
+  it("sends failure telemetry when insights file cannot be read", async () => {
+    mockParseArgs.mockReturnValue(
+      defaultArgs({ command: "insights", file: "nonexistent.html", handle: "user", token: "tok" }),
+    );
+    mockLoadConfig.mockReturnValue(null);
+    const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+    err.code = "ENOENT";
+    mockReadFileSync.mockImplementation(() => { throw err; });
+    mockClassifyError.mockReturnValue("unknown");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        command: "insights",
+        stage: "parse",
+        success: false,
+        errorCategory: "unknown",
+        timing: expect.objectContaining({ totalMs: expect.any(Number) }),
+      }),
+      expect.anything(),
+    );
+  });
+
   // ── insights: invalid HTML (no sessions) ───────────────────────────────
 
   it("exits 1 when parsed HTML has no sessions", async () => {
@@ -1156,6 +1370,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "user",
         timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: 0, totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -1202,6 +1417,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "user",
         timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -1300,6 +1516,7 @@ describe("index.ts command dispatch", () => {
         sourceHandle: "user",
         timing: expect.objectContaining({ parseMs: expect.any(Number), uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
       }),
+      expect.anything(),
     );
   });
 
@@ -1505,5 +1722,169 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = spyOutput(errorSpy);
     expect(output).toContain("GraphQL schema mismatch");
+  });
+
+  it("prefers the injected build-time version when __CLI_VERSION__ is defined", async () => {
+    vi.stubGlobal("__CLI_VERSION__", "9.9.9-test");
+    mockParseArgs.mockReturnValue(defaultArgs({ version: true }));
+
+    await runMain();
+
+    expect(spyOutput(logSpy)).toContain("9.9.9-test");
+    vi.unstubAllGlobals();
+  });
+
+  it("rethrows non-Error login failures after telemetry classification", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "login" }));
+    mockLogin.mockRejectedValue("plain failure");
+
+    await runMain();
+
+    expect(mockExit).toHaveBeenCalledWith(1);
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      "https://chapa.thecreativetoken.com",
+      expect.objectContaining({
+        success: false,
+        errorCategory: "unknown",
+      }),
+      { insecure: false },
+    );
+  });
+
+  it("reports non-ENOENT file read failures for insights uploads", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "insights",
+      file: "report.html",
+    }));
+    mockLoadConfig.mockReturnValue({
+      handle: "juan294",
+      token: "auth-token",
+      server: "https://chapa.thecreativetoken.com",
+    });
+    mockReadFileSync.mockImplementation(() => {
+      const err = Object.assign(new Error("permission denied"), { code: "EACCES" });
+      throw err;
+    });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.error)).toContain("Error reading file: permission denied");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("emits JSON when insights upload fails without an explicit error message", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "insights",
+      file: "report.html",
+      json: true,
+    }));
+    mockLoadConfig.mockReturnValue({
+      handle: "juan294",
+      token: "auth-token",
+      server: "https://chapa.thecreativetoken.com",
+    });
+    mockUploadInsights.mockResolvedValue({ success: false });
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const payload = JSON.parse(written);
+    expect(payload.success).toBe(false);
+    expect(payload.error).toBeUndefined();
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("logs a plain success message when insights upload succeeds without a craft score", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "insights",
+      file: "report.html",
+    }));
+    mockLoadConfig.mockReturnValue({
+      handle: "juan294",
+      token: "auth-token",
+      server: "https://chapa.thecreativetoken.com",
+    });
+    mockUploadInsights.mockResolvedValue({ success: true });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.info)).toContain("Success! Insights uploaded for juan294");
+    expect(loggerOutput(mockLogger.info)).not.toContain("Craft Score:");
+  });
+
+  it("emits JSON when merge fetch fails in json mode", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      handle: "juan294",
+      emuHandle: "corp_user",
+      emuToken: "emu-token",
+      token: "auth-token",
+      json: true,
+    }));
+    mockResolveToken.mockReturnValue("emu-token");
+    mockFetchEmuStats.mockResolvedValue(failedFetchResult("fetch broke", "network"));
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    const payload = JSON.parse(written);
+    expect(payload.success).toBe(false);
+    expect(payload.error).toBe("fetch broke");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("falls back to Upload failed when merge upload omits an error message", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      handle: "juan294",
+      emuHandle: "corp_user",
+      emuToken: "emu-token",
+      token: "auth-token",
+    }));
+    mockResolveToken.mockReturnValue("emu-token");
+    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 1 }));
+    mockUploadSupplementalStats.mockResolvedValue({ success: false });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.error)).toContain("Error: undefined");
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("classifies non-Error merge failures through the generic catch path", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge",
+      handle: "juan294",
+      emuHandle: "corp_user",
+      emuToken: "emu-token",
+      token: "auth-token",
+    }));
+    mockResolveToken.mockReturnValue("emu-token");
+    mockFetchEmuStats.mockRejectedValue("plain failure");
+
+    await runMain();
+
+    expect(mockQueueTelemetry).toHaveBeenCalledWith(
+      "https://chapa.thecreativetoken.com",
+      expect.objectContaining({
+        success: false,
+        errorCategory: "unknown",
+      }),
+      { insecure: false },
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("rejects invalid login server URLs before dispatching login", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "login",
+      server: "not a url",
+      serverExplicit: true,
+    }));
+
+    await runMain();
+
+    expect(spyOutput(errorSpy)).toContain("Invalid server URL: not a url");
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

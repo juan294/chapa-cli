@@ -1,13 +1,8 @@
 import { parseArgs, DEFAULT_SERVER } from "./cli.js";
 import type { CliArgs } from "./cli.js";
-import { resolveToken } from "./auth.js";
-import { fetchEmuStats } from "./fetch-emu.js";
-import { uploadSupplementalStats } from "./upload.js";
 import { loadConfig, deleteConfig } from "./config.js";
-import { login } from "./login.js";
 import { createLogger } from "./logger.js";
 import type { Logger } from "./logger.js";
-import { formatStatsSummary } from "./shared.js";
 import type { InsightsUpload } from "./shared.js";
 import { queueTelemetry, classifyError, EMPTY_TELEMETRY_STATS } from "./telemetry.js";
 import type { TelemetryPayload } from "./telemetry.js";
@@ -93,7 +88,11 @@ function deleteSavedConfig(): boolean {
 }
 
 function isLoopbackHost(hostname: string): boolean {
-  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1";
+  return hostname === "localhost"
+    || hostname.endsWith(".localhost")
+    || hostname === "127.0.0.1"
+    || hostname === "::1"
+    || hostname === "[::1]";
 }
 
 function assertTrustedServer(serverUrl: string): void {
@@ -153,6 +152,7 @@ async function handleLogin(args: CliArgs): Promise<void> {
   let caught: unknown;
 
   try {
+    const { login } = await import("./login.js");
     await login(args.server, { verbose: args.verbose, insecure: args.insecure });
     succeeded = true;
   } catch (err) {
@@ -172,7 +172,7 @@ async function handleLogin(args: CliArgs): Promise<void> {
       stats: EMPTY_TELEMETRY_STATS,
       timing: { totalMs, authMs: totalMs },
       cliVersion: VERSION,
-    });
+    }, { insecure: args.insecure });
   }
 }
 
@@ -214,36 +214,36 @@ async function handleInsights(
   let data: InsightsUpload | undefined;
   let caught: unknown;
 
-  if (!args.file) {
-    log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
-    throw new CliError("--file is required");
-  }
-
-  if (!handle) {
-    log.error("Error: No personal handle found. Run 'chapa login' first, or pass --handle.");
-    throw new CliError("No personal handle found");
-  }
-
-  if (!authToken) {
-    log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
-    throw new CliError("Not authenticated");
-  }
-
-  const filePath = resolve(args.file);
-  let html: string;
   try {
-    html = readFileSync(filePath, "utf-8");
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") {
-      log.error(`Error: File not found: ${filePath}`);
-    } else {
-      log.error(`Error reading file: ${(err as Error).message}`);
+    if (!args.file) {
+      log.error("Error: --file is required. Provide the path to your Claude Code insights HTML file.");
+      throw new CliError("--file is required");
     }
-    throw new CliError("File read error");
-  }
 
-  try {
+    if (!handle) {
+      log.error("Error: No personal handle found. Run 'chapa login' first, or pass --handle.");
+      throw new CliError("No personal handle found");
+    }
+
+    if (!authToken) {
+      log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
+      throw new CliError("Not authenticated");
+    }
+
+    const filePath = resolve(args.file);
+    let html: string;
+    try {
+      html = readFileSync(filePath, "utf-8");
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        log.error(`Error: File not found: ${filePath}`);
+      } else {
+        log.error(`Error reading file: ${(err as Error).message}`);
+      }
+      throw new CliError("File read error");
+    }
+
     log.info("Parsing insights report...");
     log.time("parse");
     try {
@@ -272,13 +272,14 @@ async function handleInsights(
       token: authToken,
       serverUrl,
       logger: log,
+      insecure: args.insecure,
     });
     uploadMs = log.timeEnd("upload");
 
-  // Trigger recalculate (non-blocking, fire-and-forget)
-  if (result.success) {
-    insightsModule.queueRecalculate(serverUrl, authToken);
-  }
+    // Trigger recalculate (non-blocking, fire-and-forget)
+    if (result.success) {
+      insightsModule.queueRecalculate(serverUrl, authToken, { insecure: args.insecure });
+    }
 
     totalMs = log.timeEnd("total");
 
@@ -347,7 +348,7 @@ async function handleInsights(
         uploadMs: round(uploadMs),
       },
       cliVersion: VERSION,
-    });
+    }, { insecure: args.insecure });
   }
 
   if (caught) {
@@ -389,6 +390,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
   }
 
   // Resolve tokens — CLI config token takes priority over GITHUB_TOKEN for auth
+  const { resolveToken } = await import("./auth.js");
   const emuToken = resolveToken(args.emuToken, "GITHUB_EMU_TOKEN");
   if (!emuToken) {
     log.error("Error: EMU token required. Use --emu-token or set GITHUB_EMU_TOKEN.");
@@ -400,6 +402,10 @@ async function handleMerge(args: CliArgs): Promise<void> {
     log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
     throw new CliError("Not authenticated");
   }
+
+  const { fetchEmuStats } = await import("./fetch-emu.js");
+  const { uploadSupplementalStats } = await import("./upload.js");
+  const { formatStatsSummary } = await import("./shared.js");
 
   try {
     log.info(`Fetching stats for EMU account: ${emuHandle}...`);
@@ -440,6 +446,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
       token: authToken,
       serverUrl,
       logger: log,
+      insecure: args.insecure,
     });
     uploadMs = log.timeEnd("upload");
 
@@ -500,24 +507,22 @@ async function handleMerge(args: CliArgs): Promise<void> {
       shouldSendTelemetry = true;
     }
   } finally {
-    if (shouldSendTelemetry) {
-      emitTelemetry(serverUrl, {
-        operationId,
-        command: "merge",
-        stage: telemetryStage,
-        targetHandle: handle,
-        sourceHandle: emuHandle,
-        success: mergeSucceeded,
-        errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
-        stats: telemetryStats,
-        timing: {
-          fetchMs: round(fetchMs),
-          uploadMs: round(uploadMs),
-          totalMs: round(totalMs || log.timeEnd("total")),
-        },
-        cliVersion: VERSION,
-      });
-    }
+    emitTelemetry(serverUrl, {
+      operationId,
+      command: "merge",
+      stage: telemetryStage,
+      targetHandle: handle,
+      sourceHandle: emuHandle,
+      success: mergeSucceeded,
+      errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
+      stats: telemetryStats,
+      timing: {
+        fetchMs: round(fetchMs),
+        uploadMs: round(uploadMs),
+        totalMs: round(totalMs || log.timeEnd("total")),
+      },
+      cliVersion: VERSION,
+    }, { insecure: args.insecure });
   }
 
   if (caught) {
@@ -541,8 +546,8 @@ function mergeTelemetryStats(stats: {
   };
 }
 
-function emitTelemetry(serverUrl: string, payload: TelemetryPayload): void {
-  queueTelemetry(serverUrl, payload);
+function emitTelemetry(serverUrl: string, payload: TelemetryPayload, opts?: { insecure?: boolean }): void {
+  queueTelemetry(serverUrl, payload, opts);
 }
 
 // ── Main Dispatcher ───────────────────────────────────────────────────────
@@ -567,10 +572,9 @@ async function main(): Promise<void> {
     throw new CliError(`Unknown command '${args.unknownCommand}'`);
   }
 
-  // Global TLS bypass for corporate networks — applies to all commands
   if (args.insecure) {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    console.warn("\n⚠ TLS certificate verification disabled (--insecure).");
+    console.warn("\n⚠ TLS certificate verification disabled for the Chapa server (--insecure).");
+    console.warn("  GitHub API calls still validate TLS.");
     console.warn("  Use only on corporate networks with TLS interception.\n");
   }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseHTML } from "linkedom";
 import {
   parseInsightsHtml,
   queueRecalculate,
@@ -180,6 +181,110 @@ describe("parseInsightsHtml", () => {
     });
   });
 
+  it("parses multi-clauding with font-weight:700 (no space)", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Multi-Clauding (Parallel Sessions)</div>
+        <div style="display:flex;">
+          <div>
+            <div style="font-weight:700;">10</div>
+            <div style="text-transform:uppercase;">Overlap Events</div>
+          </div>
+          <div>
+            <div style="font-weight:700;">20</div>
+            <div style="text-transform:uppercase;">Sessions Involved</div>
+          </div>
+          <div>
+            <div style="font-weight:700;">30%</div>
+            <div style="text-transform:uppercase;">Of Messages</div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+    const result = parseInsightsHtml(html);
+    expect(result.multiClauding).toEqual({
+      overlapEvents: 10,
+      sessionsInvolved: 20,
+      messagePercent: 30,
+    });
+  });
+
+  it("parses multi-clauding with font-weight: bold", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Multi-Clauding (Parallel Sessions)</div>
+        <div style="display:flex;">
+          <div>
+            <div style="font-weight: bold;">10</div>
+            <div style="text-transform: uppercase;">Overlap Events</div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+    const result = parseInsightsHtml(html);
+    expect(result.multiClauding.overlapEvents).toBe(10);
+  });
+
+  it("parses multi-clauding with extra whitespace in style values", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Multi-Clauding (Parallel Sessions)</div>
+        <div style="display:flex;">
+          <div>
+            <div style="font-weight :  700">10</div>
+            <div style="text-transform :  uppercase">Overlap Events</div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+    const result = parseInsightsHtml(html);
+    expect(result.multiClauding.overlapEvents).toBeGreaterThan(0);
+  });
+
+  it("returns all zeros when label/value count mismatches", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Multi-Clauding (Parallel Sessions)</div>
+        <div style="display:flex;">
+          <div>
+            <div style="font-weight: 700;">10</div>
+            <div style="text-transform: uppercase;">Overlap Events</div>
+          </div>
+          <div>
+            <div style="font-weight: 700;">20</div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+    const result = parseInsightsHtml(html);
+    expect(result.multiClauding).toEqual({
+      overlapEvents: 0,
+      sessionsInvolved: 0,
+      messagePercent: 0,
+    });
+  });
+
+  it("rejects font-weight: 7000 (word boundary check)", () => {
+    const html = `<html><body>
+      <p class="subtitle">10 messages across 2 sessions (2 total) | 2026-01-01 to 2026-01-02</p>
+      <div class="chart-card">
+        <div class="chart-title">Multi-Clauding (Parallel Sessions)</div>
+        <div style="display:flex;">
+          <div>
+            <div style="font-weight: 7000">10</div>
+            <div style="text-transform: uppercase;">Overlap Events</div>
+          </div>
+        </div>
+      </div>
+    </body></html>`;
+    const result = parseInsightsHtml(html);
+    expect(result.multiClauding.overlapEvents).toBe(0);
+  });
+
   it("extracts response time", () => {
     const result = parseInsightsHtml(FIXTURE_HTML);
     expect(result.responseTime).toEqual({
@@ -261,6 +366,32 @@ describe("parseInsightsHtml", () => {
     expect(keys).toContain("toolErrors");
     expect(keys).toContain("totalSessions");
     expect(keys).toContain("totalToolCalls");
+  });
+
+  it("performs exactly 1 full-document querySelectorAll call (single-pass contract)", () => {
+    // The optimized implementation collects subtitle, stats, and chart-card nodes in a single
+    // combined querySelectorAll selector so the DOM is traversed only once at the document level.
+    // We intercept via the shared linkedom Document prototype (all parseHTML calls share it).
+    const { document: doc } = parseHTML(FIXTURE_HTML);
+    const proto = Object.getPrototypeOf(doc) as { querySelectorAll: typeof doc.querySelectorAll };
+    const originalQSA = proto.querySelectorAll;
+    let docQsaCalls = 0;
+
+    proto.querySelectorAll = function (this: Document, selector: string) {
+      if ((this as unknown as { nodeType: number }).nodeType === 9) {
+        docQsaCalls++;
+      }
+      return originalQSA.call(this, selector);
+    };
+
+    try {
+      parseInsightsHtml(FIXTURE_HTML);
+    } finally {
+      proto.querySelectorAll = originalQSA;
+    }
+
+    // Single-pass: exactly 1 doc-level querySelectorAll for the combined selector.
+    expect(docQsaCalls).toBe(1);
   });
 });
 

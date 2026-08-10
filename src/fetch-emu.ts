@@ -78,6 +78,11 @@ type PullRequestContributionNode = NonNullable<PullRequestContributionConnection
 /** Maximum characters to log from error response bodies or GraphQL errors. */
 const MAX_ERROR_BODY_LENGTH = 200;
 
+/** Maximum number of GraphQL pullRequestContributions pagination pages.
+ *  Each page returns up to 100 PRs, so this caps total PRs at ~5 000.
+ *  Guards against runaway pagination if upstream pageInfo misbehaves. */
+const MAX_PR_PAGES = 50;
+
 /** Truncate a string to the given max length, appending "..." if truncated. */
 function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + "..." : s;
@@ -111,7 +116,7 @@ interface FetchEmuOptions {
   logger?: Logger;
 }
 
-export type FetchEmuResult =
+type FetchEmuResult =
   | { ok: true; stats: StatsData }
   | {
       ok: false;
@@ -242,7 +247,18 @@ export async function fetchEmuStats(
       endCursor: null,
     };
 
+    let pagesFetched = 0;
     while (hasNextPage) {
+      if (pagesFetched >= MAX_PR_PAGES) {
+        const msg = `[cli] GraphQL pagination exceeded maximum of ${MAX_PR_PAGES} pages for ${login}`;
+        logError(log, msg);
+        return {
+          ok: false,
+          error: `GraphQL pagination exceeded ${MAX_PR_PAGES} pages — aborting to avoid runaway requests`,
+          errorCategory: "graphql",
+        };
+      }
+
       if (!endCursor) {
         const msg = `[cli] GraphQL pagination error for ${login}: missing endCursor`;
         logError(log, msg);
@@ -289,6 +305,7 @@ export async function fetchEmuStats(
       prNodes.push(...normalizePullRequestNodes(pageConnection.nodes));
       hasNextPage = pageInfo.hasNextPage;
       endCursor = pageInfo.endCursor;
+      pagesFetched++;
     }
 
     const raw: RawContributionData = {

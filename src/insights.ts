@@ -15,7 +15,7 @@ interface ChartCards {
   responseTime: Element | null;
 }
 
-function collectChartCards(doc: Document): ChartCards {
+function collectChartCards(chartCardElements: Iterable<Element>): ChartCards {
   const cards: ChartCards = {
     toolUsage: null,
     sessionTypes: null,
@@ -27,7 +27,7 @@ function collectChartCards(doc: Document): ChartCards {
     responseTime: null,
   };
 
-  for (const card of doc.querySelectorAll(".chart-card")) {
+  for (const card of chartCardElements) {
     const title = card.querySelector(".chart-title")?.textContent?.trim() ?? "";
 
     if (!cards.toolUsage && title.startsWith("Top Tools Used")) {
@@ -123,7 +123,7 @@ function parseLinesStat(text: string): { added: number; deleted: number } {
   };
 }
 
-function extractVolumeStats(doc: Document): {
+function extractVolumeStats(stats: Iterable<Element>): {
   messages: number;
   linesAdded: number;
   linesDeleted: number;
@@ -140,7 +140,6 @@ function extractVolumeStats(doc: Document): {
     msgsPerDay: 0,
   };
 
-  const stats = doc.querySelectorAll(".stats-row .stat");
   for (const stat of stats) {
     const value = stat.querySelector(".stat-value")?.textContent?.trim() ?? "";
     const label = stat.querySelector(".stat-label")?.textContent?.trim().toLowerCase() ?? "";
@@ -170,6 +169,9 @@ function extractVolumeStats(doc: Document): {
   return result;
 }
 
+const VALUE_STYLE = /font-weight\s*:\s*(700|bold)\b/i;
+const LABEL_STYLE = /text-transform\s*:\s*uppercase\b/i;
+
 function parseMultiClauding(card: Element | null): {
   overlapEvents: number;
   sessionsInvolved: number;
@@ -184,15 +186,19 @@ function parseMultiClauding(card: Element | null): {
 
   for (const div of statDivs) {
     const style = div.getAttribute("style") ?? "";
-    if (style.includes("font-weight: 700") || style.includes("font-weight:700")) {
+    if (VALUE_STYLE.test(style)) {
       values.push(parseNumeric(div.textContent?.trim() ?? "0"));
     }
-    if (style.includes("text-transform: uppercase") || style.includes("text-transform:uppercase")) {
+    if (LABEL_STYLE.test(style)) {
       labels.push(div.textContent?.trim().toLowerCase() ?? "");
     }
   }
 
-  for (let i = 0; i < labels.length && i < values.length; i++) {
+  if (labels.length !== values.length) {
+    return result;
+  }
+
+  for (let i = 0; i < labels.length; i++) {
     const label = labels[i]!;
     const value = values[i]!;
     if (label.includes("overlap")) result.overlapEvents = value;
@@ -258,15 +264,32 @@ function mapSatisfaction(chart: Record<string, number>): {
 export function parseInsightsHtml(html: string): InsightsUpload {
   const { document: doc } = parseHTML(html);
 
-  const subtitleEl = doc.querySelector(".subtitle");
+  // Single-pass: collect all needed node types in one querySelectorAll traversal,
+  // then partition by class rather than rescanning the DOM per section.
+  const allNodes = doc.querySelectorAll(".subtitle, .stats-row .stat, .chart-card");
+  const statNodes: Element[] = [];
+  const chartCardNodes: Element[] = [];
+  let subtitleEl: Element | null = null;
+
+  for (const node of allNodes) {
+    if (node.classList.contains("subtitle")) {
+      if (!subtitleEl) subtitleEl = node;
+    } else if (node.classList.contains("chart-card")) {
+      chartCardNodes.push(node);
+    } else {
+      // .stat nodes inside .stats-row
+      statNodes.push(node);
+    }
+  }
+
   const subtitle = parseSubtitle(subtitleEl?.textContent ?? "");
 
-  const volume = extractVolumeStats(doc);
+  const volume = extractVolumeStats(statNodes);
   if (volume.messages === 0 && subtitle.messages > 0) {
     volume.messages = subtitle.messages;
   }
 
-  const cards = collectChartCards(doc);
+  const cards = collectChartCards(chartCardNodes);
   const toolUsage = extractBarChart(cards.toolUsage);
   const totalToolCalls = Object.values(toolUsage).reduce((a, b) => a + b, 0);
 
@@ -306,6 +329,7 @@ interface InsightsUploadOptions {
   token: string;
   serverUrl: string;
   logger?: Logger;
+  insecure?: boolean;
 }
 
 interface InsightsUploadResult {
@@ -340,6 +364,7 @@ export async function uploadInsights(
         "Content-Type": "application/json",
       },
       body: payload,
+      insecure: opts.insecure,
     });
 
     if (!res.ok) {
@@ -391,7 +416,6 @@ export async function triggerRecalculate(
       method: "POST",
       token,
       timeoutMs: 30_000,
-      fallbackData: {},
     });
     if (res.ok) {
       logger?.debug("Impact score recalculated.");
@@ -403,13 +427,14 @@ export async function triggerRecalculate(
   }
 }
 
-export function queueRecalculate(serverUrl: string, token: string): void {
+export function queueRecalculate(serverUrl: string, token: string, opts?: { insecure?: boolean }): void {
   const baseUrl = stripTrailingSlashes(serverUrl);
 
   spawnDetachedPost({
     url: `${baseUrl}/api/recalculate`,
     timeoutMs: 30_000,
     token,
+    insecure: opts?.insecure,
   });
 }
 
@@ -418,4 +443,6 @@ export {
   parseNumeric as _parseNumeric,
   parseSubtitle as _parseSubtitle,
   parseLinesStat as _parseLinesStat,
+  parseMultiClauding as _parseMultiClauding,
+  parseResponseTime as _parseResponseTime,
 };

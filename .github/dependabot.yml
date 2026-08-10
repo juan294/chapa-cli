@@ -1,24 +1,41 @@
 version: 2
-updates:
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: weekly
-    labels:
-      - dependencies
-    groups:
-      dev-dependencies:
-        dependency-type: development
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: vite
-        reason: managed via pnpm overrides in package.json
 
-  - package-ecosystem: github-actions
-    directory: /
+updates:
+  # npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    target-branch: "develop"
     schedule:
-      interval: weekly
-    labels:
-      - dependencies
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: "vite"
+        reason: managed via pnpm overrides in package.json
+    groups:
+      production:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@types/*"
+          - "eslint*"
+          - "vitest*"
+          - "@vitest/*"
+          - "@testing-library/*"
+      dev-and-types:
+        applies-to: version-updates
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "vitest*"
+          - "@vitest/*"
+          - "@testing-library/*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"

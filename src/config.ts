@@ -7,13 +7,13 @@ import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-export interface CliConfig {
+interface CliConfig {
   token: string;
   handle: string;
   server: string;
 }
 
-export class ConfigError extends Error {
+class ConfigError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ConfigError";

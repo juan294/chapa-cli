@@ -1,5 +1,5 @@
 ---
-name: "Git Workflow"
+name: git-workflow
 description: "Git recipes, worktree management, push sequences, branch verification, and conflict resolution patterns."
 ---
 
@@ -17,6 +17,24 @@ Right -- commit before pulling (clean tree required):
 
 ```bash
 git add <files> && git commit -m "msg" && git pull --rebase && git push
+```
+
+Pull before push even on a branch you just committed to -- the remote may
+have advanced from other sessions or parallel agents since you last fetched.
+
+## Empty Repositories
+
+Wrong -- `git log` and `git diff HEAD` fail on a repo with no commits yet:
+
+```bash
+git log -1
+git diff HEAD
+```
+
+Right -- check for a HEAD first:
+
+```bash
+git rev-parse HEAD 2>&1 || echo "no commits yet -- skip log/diff HEAD"
 ```
 
 ## First Push / PR Creation
@@ -79,6 +97,36 @@ git worktree remove --force <path>; git branch -D <branch>
 
 Always remove worktrees BEFORE merging PRs with `--delete-branch`.
 
+## Cleanup After Merge
+
+Wrong -- assume the merge cleaned up; leave stale local branches behind
+(a cleanup "done" that left two local branches needing a second pass):
+
+```bash
+gh pr merge --squash --delete-branch   # deletes the REMOTE branch only
+```
+
+Right -- a complete cleanup covers worktrees, local branches, and prune,
+then verifies nothing is left dangling:
+
+```bash
+# 1. Remove worktrees FIRST (a branch checked out in a worktree won't delete)
+git worktree remove --force /absolute/path/to/worktree
+git worktree prune
+
+# 2. Delete the local branch (remote went with --delete-branch at merge)
+git branch -D <branch>
+
+# 3. Drop stale remote-tracking refs for branches deleted on the remote
+git fetch --prune
+
+# 4. Verify -- these should list ONLY active work, nothing merged
+git branch --merged                # local branches already merged
+git worktree list                  # lingering worktrees
+```
+
+Anything still listed in step 4 is the "second pass" -- finish it now, not later.
+
 ## Conflict Resolution
 
 Wrong -- plain checkout fails on unmerged files:
@@ -87,7 +135,7 @@ Wrong -- plain checkout fails on unmerged files:
 git checkout -- conflicted-file.ts
 ```
 
-Right -- pick a side, abort, or remove conflicting untracked files:
+Right -- check `git status` first, then pick a side, abort, or remove conflicting untracked files:
 
 ```bash
 git checkout --ours file.ts    # keep yours

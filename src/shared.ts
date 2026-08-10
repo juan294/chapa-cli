@@ -20,7 +20,7 @@ export const PR_WEIGHT_AGG_CAP = 120;
 // ---------------------------------------------------------------------------
 
 /** Daily activity count for heatmap */
-export interface HeatmapDay {
+interface HeatmapDay {
   date: string; // ISO date string (YYYY-MM-DD)
   count: number;
 }

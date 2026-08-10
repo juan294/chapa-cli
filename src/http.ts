@@ -1,6 +1,6 @@
 import { normalizeErrorCauseChain } from "./shared.js";
 
-export type RequestFailureCategory =
+type RequestFailureCategory =
   | "timeout"
   | "network"
   | "http"
@@ -17,7 +17,7 @@ export interface RequestFailure {
   chain?: string;
 }
 
-export interface RequestSuccess<T> {
+interface RequestSuccess<T> {
   ok: true;
   status: number;
   data: T;
@@ -33,6 +33,21 @@ interface RequestOptions<TFallback> {
   body?: BodyInit | object;
   timeoutMs?: number;
   fallbackData?: TFallback;
+  insecure?: boolean;
+}
+
+async function withInsecureTls<T>(fn: () => Promise<T>): Promise<T> {
+  const prev = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) {
+      delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    } else {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = prev;
+    }
+  }
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -96,23 +111,42 @@ function parseBodyText(raw: string): { body?: unknown; text?: string } {
   }
 }
 
+function isLocalUrl(url: string): boolean {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
 async function makeRequest(
   opts: RequestOptions<unknown>,
 ): Promise<RequestResult<Response>> {
   const headers = { ...(opts.headers ?? {}) };
   if (opts.token) {
+    if (!opts.url.startsWith("https://") && !isLocalUrl(opts.url)) {
+      return {
+        ok: false,
+        category: "network",
+        message: "Refusing to send credentials over non-HTTPS connection.",
+      };
+    }
     headers.Authorization = `Bearer ${opts.token}`;
   }
 
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  try {
-    const response = await fetch(opts.url, {
+  const doFetch = () =>
+    fetch(opts.url, {
       method: opts.method ?? "GET",
       headers,
       body: normalizeBody(opts.body, headers),
       signal: AbortSignal.timeout(timeoutMs),
     });
+
+  try {
+    const response = opts.insecure ? await withInsecureTls(doFetch) : await doFetch();
 
     if (!response.ok) {
       const raw = await response.text().catch(() => "(unreadable)");

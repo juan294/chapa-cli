@@ -114,6 +114,20 @@ describe("createLogger", () => {
       expect(allStdout()).toBe("");
       expect(allStderr()).toContain("json debug");
     });
+
+    it("info() redirects to stderr when verbose and json are both enabled", () => {
+      const log = createLogger({ verbose: true, json: true });
+      log.info("progress message");
+      expect(allStdout()).toBe("");
+      expect(allStderr()).toContain("progress message");
+    });
+
+    it("info() is still suppressed in JSON mode without verbose", () => {
+      const log = createLogger({ verbose: false, json: true });
+      log.info("should not appear anywhere");
+      expect(allStdout()).toBe("");
+      expect(allStderr()).toBe("");
+    });
   });
 
   // ── Timing ───────────────────────────────────────────────────────────
