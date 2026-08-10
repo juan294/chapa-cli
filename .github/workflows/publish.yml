@@ -1,8 +1,20 @@
 # Publish to npm when a GitHub Release is published.
 #
-# Uses an npm automation token (NPM_TOKEN secret) which bypasses 2FA/OTP.
-# Generate a granular access token scoped to this package with read-write
-# permissions. The token-expiry-reminder workflow tracks rotation.
+# Authentication is OIDC trusted publishing, not a token. There is no NPM_TOKEN
+# secret in this repository and there should never be one: npm stripped
+# bypass-2FA granular tokens of account management in August 2026 and removes
+# their direct-publish ability in January 2027, after which a token can only
+# stage a publish for human 2FA approval.
+#
+# The trust relationship is registered against this repo, THIS FILENAME
+# (publish.yml), and the `npm` environment. Renaming either silently breaks
+# publishing with an opaque 401 that reads like bad credentials, so change one
+# only alongside:
+#
+#   npm trust github chapa-cli --repo juan294/chapa-cli \
+#     --file publish.yml --env npm --allow-publish
+#
+# src/publish-workflow.test.ts guards those bindings.
 
 name: Publish to npm
 
@@ -13,8 +25,12 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: npm
     permissions:
       contents: read
+      # Scoped to this job only — this is what mints the OIDC token npm
+      # exchanges for short-lived publish rights.
+      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,6 +66,15 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
+      - name: Ensure npm supports trusted publishing
+        # Node 22 still bundles npm 10.9, which has no OIDC support at all and
+        # fails with a bare 401 that reads like a credentials problem. Trusted
+        # publishing needs >= 11.5.1, so upgrade before anything touches the
+        # registry and record the version in the log.
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm run typecheck
@@ -58,6 +83,8 @@ jobs:
 
       - run: pnpm run build
 
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish
+        # No NODE_AUTH_TOKEN. npm detects the OIDC environment, exchanges the
+        # id-token for a short-lived publish credential, and attaches SLSA
+        # provenance automatically.
+        run: npm publish --provenance --access public
