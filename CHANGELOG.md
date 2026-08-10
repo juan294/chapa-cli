@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Publish to npm via OIDC trusted publishing with SLSA provenance
+  instead of a stored `NPM_TOKEN` secret
+
+### Removed
+
+- `token-expiry-reminder` workflow — there is no longer a token to rotate
+
 ## [0.4.1] - 2026-04-18
 
 ### Added

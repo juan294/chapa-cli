@@ -41,7 +41,7 @@ Six API endpoints connect the CLI to the Chapa server: device flow auth, token e
 ## Branching Strategy
 
 - `develop` — default working branch; all feature branches merge here
-- `main` — release branch; GitHub Releases created from `main` publish to npm automatically, with manual `npm publish --otp=<code>` only as a fallback
+- `main` — release branch; GitHub Releases created from `main` publish to npm automatically via OIDC trusted publishing, with manual `npm publish --otp=<code>` only as a fallback
 
 ## Deployment
 
@@ -91,6 +91,12 @@ Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 2. Merge `develop` → `main` via PR
 3. Create a GitHub Release from a tag/commit on `main` — the `publish.yml` workflow hard-fails unless the release targets `main` and the tagged commit is reachable from `origin/main`, then publishes to npm automatically
 4. If automated publish fails (strict 2FA), publish manually: `npm publish --otp=<code>`
+
+Publishing authenticates with OIDC trusted publishing — no `NPM_TOKEN` secret,
+nothing to rotate. The trust relationship binds to this repo, the workflow
+filename `publish.yml`, and the `npm` environment; renaming either breaks
+publishing with an opaque 401 until `npm trust github chapa-cli` is re-run.
+`src/publish-workflow.test.ts` guards those bindings.
 
 ## Code Style
 
