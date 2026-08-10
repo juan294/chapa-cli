@@ -7,10 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-10
+
+### Security
+
+- Remove a shell injection risk in the Windows browser launch during
+  login (#103, #104)
+- Enforce HTTPS in the login device flow and reject non-loopback
+  redirect hosts (#91, #95, #96, #97, #98)
+- Enforce HTTPS and strict 2xx parsing in the shared request
+  transport (#94, #95, #99)
+
+### Fixed
+
+- Paginate EMU pull request contributions beyond the 100-node GraphQL
+  cap, which silently truncated stats for high-volume accounts (#92)
+- Emit telemetry failure events on insights and login early-exit
+  paths, and add command context to payloads (#101)
+- Correct server-selection intent, config corruption handling, and
+  command UX in the CLI (#91, #95, #96, #97, #98)
+
+### Performance
+
+- Cache DOM lookups in insights parsing to avoid redundant
+  rescans (#102)
+
 ### Changed
 
 - Publish to npm via OIDC trusted publishing with SLSA provenance
-  instead of a stored `NPM_TOKEN` secret
+  instead of a stored `NPM_TOKEN` secret (#123)
 
 ### Removed
 
