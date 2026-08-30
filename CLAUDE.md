@@ -40,13 +40,14 @@ Six API endpoints connect the CLI to the Chapa server: device flow auth, token e
 
 ## Branching Strategy
 
-- `develop` — default working branch; all feature branches merge here
-- `main` — release branch; GitHub Releases created from `main` publish to npm automatically via OIDC trusted publishing, with manual `npm publish --otp=<code>` only as a fallback
+- `develop` — default working branch; feature PRs merge here with squash
+- `main` — release branch; `develop` → `main` release PRs use a merge commit, and GitHub Releases created from `main` publish to npm automatically via OIDC trusted publishing, with manual `npm publish --otp=<code>` only as a fallback
 
 ## Deployment
 
-- Production deploys from `main` only. Changes pushed to `develop` must be merged to `main` via PR before they go live.
+- Production deploys from `main` only. Changes pushed to `develop` must be merged to `main` with a merge-commit PR before they go live.
 - Always confirm the target branch before pushing — if the goal is production deployment, ensure the PR targets `main`.
+- Never squash a release PR. A squash discards the shared ancestry between `develop` and `main`, which makes later release PRs depend on manual back-merges. A merge commit keeps the last promoted `develop` commit in `main`'s ancestry. Feature PRs into `develop` may still squash.
 
 ## Commit Conventions
 
@@ -67,7 +68,7 @@ docs: description
 2. Make changes, write/update tests
 3. Open a PR targeting `develop`
 4. CI must pass (test + typecheck + build across Node 20/22/24)
-5. Merge to `develop`; when ready to release, merge `develop` → `main`
+5. Squash-merge the feature PR to `develop`; when ready to release, merge `develop` → `main` with a merge commit
 
 ## Testing & CI
 
@@ -88,7 +89,7 @@ Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 ## Release Process
 
 1. Bump `version` in `package.json` on `develop`
-2. Merge `develop` → `main` via PR
+2. Merge `develop` → `main` via PR with a merge commit; never squash the release PR
 3. Create a GitHub Release from a tag/commit on `main` — the `publish.yml` workflow hard-fails unless the release targets `main` and the tagged commit is reachable from `origin/main`, then publishes to npm automatically
 4. If automated publish fails (strict 2FA), publish manually: `npm publish --otp=<code>`
 

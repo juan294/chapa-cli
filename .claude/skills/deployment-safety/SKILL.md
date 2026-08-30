@@ -152,7 +152,25 @@ gh repo create myorg/new-project --public
 # branches linger after merge, Dependabot alerts off
 ```
 
-Right -- apply the canonical configuration at setup:
+Right -- choose merge settings that match the branch topology. For a long-lived
+`develop` plus `main`, keep squash for feature PRs and enable merge commits for
+release PRs:
+
+```bash
+gh api -X PATCH repos/{owner}/{repo} \
+  -f allow_squash_merge=true \
+  -f allow_merge_commit=true \
+  -f allow_rebase_merge=false \
+  -f delete_branch_on_merge=true \
+  -f allow_auto_merge=true
+```
+
+Feature PRs into `develop` use squash. Release PRs from `develop` to `main` use
+a merge commit. Never squash the release PR: squash discards shared ancestry
+and makes later releases depend on a manual back-merge. Never pass
+`--delete-branch` for the permanent `develop` branch.
+
+For a main-only repository, squash can remain the only merge method:
 
 ```bash
 gh api -X PATCH repos/{owner}/{repo} \
@@ -164,6 +182,5 @@ gh api -X PATCH repos/{owner}/{repo} \
 ```
 
 Also turn on Dependabot alerts and security update PRs, and restrict the
-Production deployment environment to protected branches only. Squash-only is
-why worktree cleanup needs `git branch -D` instead of `-d`, and why
-`develop` -> `main` release PRs must NOT use `--delete-branch`.
+Production deployment environment to protected branches only. Squash-merged
+feature branches still need `git branch -D` instead of `-d` during cleanup.

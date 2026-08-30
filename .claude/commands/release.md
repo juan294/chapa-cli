@@ -239,9 +239,26 @@ and published, then proceed only after approval.
 
 Use when `develop` (or `dev`/`integration`) is the **permanent** integration branch and the
 release is a PR from `develop` -> `main` directly. There is NO intermediate `release/vX.Y.Z`
-branch -- the integration branch already holds the changes.
+branch -- the integration branch already holds the changes. Feature PRs into the integration
+branch may squash, but the release PR must use a merge commit. Never squash a release PR:
+that discards the shared ancestry and makes later release PRs depend on manual back-merges.
 
-1. Land the release prep on the integration branch:
+1. Confirm the repository allows merge commits and that the prospective release merge is
+   conflict-free and tree-identical to the integration candidate:
+
+   ```bash
+   gh api "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
+     --jq '{allow_merge_commit, allow_squash_merge}'
+   git fetch origin
+   developTree=$(git rev-parse 'origin/develop^{tree}')
+   mergeTree=$(git merge-tree --write-tree origin/main origin/develop)
+   test "$mergeTree" = "$developTree"
+   ```
+
+   `allow_merge_commit` and `allow_squash_merge` must both be `true`. Stop if the merge
+   conflicts or changes the candidate tree.
+
+2. Land the release prep on the integration branch:
 
    ```bash
    git checkout develop && git pull --rebase
@@ -250,7 +267,7 @@ branch -- the integration branch already holds the changes.
    git push origin develop
    ```
 
-2. Check for an existing release PR before creating one:
+3. Check for an existing release PR before creating one:
 
    ```bash
    gh pr list --base main --head develop
@@ -262,23 +279,23 @@ branch -- the integration branch already holds the changes.
    gh pr create --base main --head develop --title "release: vX.Y.Z" --body "[CHANGELOG entry]"
    ```
 
-3. Verify CI on the PR:
+4. Verify CI on the PR:
 
    ```bash
    gh run list --branch develop --limit 1
    ```
 
-4. Merge with squash + auto-merge. NEVER pass `--delete-branch` -- `develop` is permanent:
+5. Merge with a merge commit + auto-merge. NEVER pass `--delete-branch` -- `develop` is permanent:
 
    ```bash
-   gh pr merge --squash --auto
+   gh pr merge --merge --auto
    ```
 
    Repos standardized per Rule #76 enable delete-branch-on-merge, but that only removes
    ordinary feature heads; deleting the permanent integration branch would be destructive.
 
-5. **STOP.** Wait for the PR to merge (confirm with `gh pr view --json state`). After it lands,
-   tag the squashed release commit on `main`:
+6. **STOP.** Wait for the PR to merge (confirm with `gh pr view --json state`). After it lands,
+   tag the release merge commit on `main`:
 
    ```bash
    git checkout main && git pull --rebase
@@ -287,7 +304,7 @@ branch -- the integration branch already holds the changes.
    gh release create vX.Y.Z --notes "[CHANGELOG entry]"
    ```
 
-6. Report the result with a link to the PR and the GitHub release.
+7. Report the result with a link to the PR and the GitHub release.
    If the project has a registry publish step, remind the user:
    "After tagging, run `npm publish` / `cargo publish` / etc."
 
@@ -298,6 +315,8 @@ branch -- the integration branch already holds the changes.
 - ALWAYS check for an existing PR before creating one with `gh pr create` (Error #53).
 - NEVER pass `--delete-branch` on a `develop` -> `main` release PR -- `develop` is a permanent
   integration branch (develop-based flow; Rule #76).
+- NEVER squash a `develop` -> `main` release PR. Use `gh pr merge --merge --auto` so later
+  release PRs retain a correct merge-base without a manual back-merge.
 - ALWAYS verify CI after push (push accountability).
 - ALWAYS present the diff before committing (Step 2 gate).
 - ALWAYS ask for the version number -- never guess or auto-increment.
