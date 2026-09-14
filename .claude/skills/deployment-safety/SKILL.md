@@ -1,5 +1,5 @@
 ---
-name: deployment-safety
+name: "deployment-safety"
 description: "Production deployment rules, rollback-first recovery, dependency batching, CI cost awareness, framework upgrade verification, fallback observability, and GitHub repo settings standardization."
 ---
 
@@ -7,102 +7,64 @@ description: "Production deployment rules, rollback-first recovery, dependency b
 
 ## Merging to Main
 
-Wrong -- merge Dependabot PR thinking it's cleanup:
+Read the actual deployment topology: `main` may be canonical source, production,
+or both. A merge/push that deploys production requires explicit production
+authorization. A request to clean up dependency PRs is not release authorization.
 
-```bash
-gh pr merge 42 --merge  # Dependabot targets main = production deploy
-```
-
-Right -- move the update onto the non-production integration path,
-close the PR, and release normally:
-
-```bash
-# develop/main topology:
-git checkout develop && git cherry-pick <commit>
-gh pr close 42  # release via develop -> main
-
-# main-only topology:
-git checkout -b chore/dependency-updates main
-git cherry-pick <commit>
-gh pr close 42  # validate on branch/PR before merging back to main
-```
+Keep working branches and worktrees local. Finish applicable tests, coverage,
+typechecks, lint, build and deployment preflight locally, resolve failures,
+and integrate completed work locally into the documented integration branch.
+Inspect workflow and deployment triggers before the single authorized push of
+that completed branch. Never create Vercel Preview deployments or publish
+working branches/PRs for experimentation. If an integration push would create a
+Preview, stop before pushing and use only a documented, non-destructive bypass.
+Production publication remains separately and explicitly authorized. Read-only
+inspection of existing runs and deployments is allowed.
 
 ## Dependency Batching
 
-Wrong -- merge N PRs one-by-one (O(n^2) rebase cascade):
+Inspect existing dependency PRs read-only. Apply the relevant updates together
+on one local task-owned branch based on the documented integration branch:
 
 ```bash
-gh pr merge 1 && gh pr merge 2 && gh pr merge 3
-# 7 PRs x 9 workflows = ~189 wasted CI runs
+git switch -c chore/dependency-updates <integration-branch>
+# Apply reviewed updates and run the complete applicable local gate.
 ```
 
-Right -- batch into a single branch:
-
-```bash
-# develop/main topology:
-git checkout -b chore/dependency-updates develop
-
-# main-only topology:
-git checkout -b chore/dependency-updates main
-
-# Apply all updates, run CI once, merge one PR
-```
+Integrate the verified result locally. Never merge dependency PRs one-by-one,
+push fixes to their branches, request remote rebases, or create a batch PR as a
+debugging loop. Closing/commenting on existing PRs needs authorization.
 
 ## CI Cost Awareness
 
-Wrong -- push partial work to see if CI passes:
-
-```bash
-git push  # 9 workflows triggered, guess and check
-```
-
-Right -- justify the run before triggering it, then push once:
-
-```text
-Before any CI run, deployment, or API call, ask:
-1. Is this needed? (Can I achieve this locally?)
-2. Is this justified? (Does this advance the task?)
-3. Is this verifiable? (Will I know if it succeeded?)
-If any answer is "no" -- do not proceed.
-```
-
-```bash
-pnpm run typecheck 2>&1; pnpm run lint 2>&1; pnpm run test 2>&1
-git push  # confident it works
-```
+Run tests, coverage, typechecks, lint, build and deployment preflight locally
+when applicable. Use `&&` or explicit status aggregation so an early failing
+check cannot be hidden by later success. Inspect all trigger types before the
+single authorized integration push, including auxiliary workflows and report
+publication. Existing logs and statuses can be inspected without triggering runs.
 
 ## Framework Upgrades
 
-Wrong -- merge after CI passes (CI != production):
-
-```bash
-gh pr merge 99 --squash  # CI green, serverless runtime crashes
-```
-
-Right -- verify on preview deployment first:
-
-```bash
-# Push to non-main branch -> preview URL
-# Verify: site loads, API routes respond, health checks pass
-# Only then merge to main
-```
+A green build alone does not establish runtime compatibility. Exercise local
+runtime smoke tests, packaging and platform preflight, and inspect existing
+platform logs/configuration. Never create a Vercel Preview. Record any remaining
+platform-only uncertainty in the candidate's release review; do not claim local
+tests prove an unexercised hosted runtime works.
 
 ## Production Incident Recovery
 
-Wrong -- deploy fixes to prod while investigating:
+Under the project's authorized incident procedure, restore the known-good
+release before investigating. Rollback is itself a production action and must
+be within the authorization already provided.
 
 ```bash
-vercel deploy --prod  # fails, deploy again, fails again
+# Only under an authorized Vercel rollback procedure:
+vercel rollback
+# Read existing logs, reproduce locally, fix and fully verify locally.
+# Publish a completed production fix only with explicit authorization.
 ```
 
-Right -- roll back first, investigate second:
-
-```bash
-vercel rollback  # Step 1: restore service immediately
-# Step 2: investigate on non-production (logs, preview URL)
-# Step 3: fix on the integration path, verify on preview,
-# then merge to the production branch
-```
+Never promote a broken deployment to gather logs or deploy repeatedly to diagnose.
 
 ## Fallback Observability
 
@@ -152,9 +114,9 @@ gh repo create myorg/new-project --public
 # branches linger after merge, Dependabot alerts off
 ```
 
-Right -- choose merge settings that match the branch topology. For a long-lived
-`develop` plus `main`, keep squash for feature PRs and enable merge commits for
-release PRs:
+When repository-settings changes are explicitly authorized, choose settings
+that match the branch topology. For a long-lived `develop` plus `main`, keep
+squash for feature PRs and enable merge commits for release PRs:
 
 ```bash
 gh api -X PATCH repos/{owner}/{repo} \
@@ -166,9 +128,8 @@ gh api -X PATCH repos/{owner}/{repo} \
 ```
 
 Feature PRs into `develop` use squash. Release PRs from `develop` to `main` use
-a merge commit. Never squash the release PR: squash discards shared ancestry
-and makes later releases depend on a manual back-merge. Never pass
-`--delete-branch` for the permanent `develop` branch.
+a merge commit. Never squash the release PR or delete the permanent `develop`
+branch.
 
 For a main-only repository, squash can remain the only merge method:
 
@@ -182,5 +143,8 @@ gh api -X PATCH repos/{owner}/{repo} \
 ```
 
 Also turn on Dependabot alerts and security update PRs, and restrict the
-Production deployment environment to protected branches only. Squash-merged
-feature branches still need `git branch -D` instead of `-d` during cleanup.
+Production deployment environment to protected branches only, when authorized.
+Preserve permanent integration branches. If a squash merge means ancestry cannot
+prove local integration, retain the source branch and document equivalent
+content; never default to force deletion. Do not alter settings to bypass a
+blocked publication or enable remote compute during a local implementation.

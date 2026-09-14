@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "integration_branch": "develop",
+  "production_branches": [
+    "main"
+  ],
+  "remote": "origin",
+  "verification_command": [
+    "python3",
+    ".rpi/scripts/rpi-verify.py"
+  ],
+  "verification_checks": [
+    {
+      "name": "tests-with-coverage",
+      "argv": [
+        "pnpm",
+        "run",
+        "test:coverage"
+      ]
+    },
+    {
+      "name": "typecheck",
+      "argv": [
+        "pnpm",
+        "run",
+        "typecheck"
+      ]
+    },
+    {
+      "name": "build",
+      "argv": [
+        "pnpm",
+        "run",
+        "build"
+      ]
+    }
+  ]
+}
