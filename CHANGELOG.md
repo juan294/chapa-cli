@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-08
+
+### Changed
+
+- `chapa merge` now links the second GitHub account to your Chapa profile
+  instead of uploading stats. It sends the handle and token once, in the
+  JSON body of `POST /api/github-linked`. The Chapa server verifies the
+  token, stores it encrypted and collects the account's activity daily, so
+  the work counts in the badge (juan294/chapa#1401)
+- `chapa merge` prints the server's reason on every refusal. For a refused
+  token it also prints the required scopes (`repo`, `read:user`,
+  `read:org`), the token setup link and the recovery command
+- `chapa merge --json` output describes the link (`linked`,
+  `alsoRegistered`, `collection`, `linkStatus`) instead of uploaded stats.
+  Failures include the HTTP `status` and the server error `code`
+- Merge telemetry keeps `command: "merge"` with zero stats; it never
+  contains the token
+
+### Added
+
+- `chapa unlink` removes the linked GitHub account and its stored token
+  (`POST /api/github-linked/disconnect`)
+
+### Removed
+
+- The local EMU stats fetch and the legacy `POST /api/supplemental` upload.
+  Chapa no longer scores self-reported stats, and the server now answers
+  the legacy upload with 410
+- The `read:discussion` scope from the token instructions; it is not needed
+
 ## [0.5.0] - 2026-08-10
 
 ### Security
@@ -191,7 +221,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD pipeline with Node 18/20/22 matrix testing
 - Automated npm publishing on version bump
 
-[Unreleased]: https://github.com/juan294/chapa-cli/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/juan294/chapa-cli/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/juan294/chapa-cli/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/juan294/chapa-cli/compare/v0.4.1...v0.5.0
+[0.4.1]: https://github.com/juan294/chapa-cli/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/juan294/chapa-cli/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/juan294/chapa-cli/compare/v0.2.8...v0.3.1
 [0.2.8]: https://github.com/juan294/chapa-cli/compare/v0.2.7...v0.2.8
