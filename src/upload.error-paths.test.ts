@@ -13,46 +13,25 @@ vi.mock("./background.js", () => ({
 }));
 
 import { queueRecalculate, triggerRecalculate, uploadInsights } from "./insights.js";
-import { uploadSupplementalStats } from "./upload.js";
+import { linkGitHubAccount, readGitHubLinkStatus, unlinkGitHubAccount } from "./upload.js";
 
 afterEach(() => {
   vi.clearAllMocks();
 });
 
 describe("upload catch paths", () => {
-  it("surfaces unexpected uploadSupplementalStats exceptions", async () => {
-    mockRequestJson.mockRejectedValueOnce(new Error("boom"));
+  it("surfaces unexpected link, status and unlink exceptions without the token", async () => {
+    mockRequestJson.mockRejectedValue(new Error("boom"));
+    const opts = { serverUrl: "https://example.com", authToken: "cli-token" };
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: {
-        handle: "corp_user",
-        commitsTotal: 0,
-        activeDays: 0,
-        prsMergedCount: 0,
-        prsMergedWeight: 0,
-        reviewsSubmittedCount: 0,
-        issuesClosedCount: 0,
-        linesAdded: 0,
-        linesDeleted: 0,
-        reposContributed: 0,
-        topRepoShare: 0,
-        maxCommitsIn10Min: 0,
-        totalStars: 0,
-        totalForks: 0,
-        totalWatchers: 0,
-        heatmapData: [],
-        fetchedAt: new Date().toISOString(),
-      },
-      token: "token",
-      serverUrl: "https://example.com",
-    });
+    const linked = await linkGitHubAccount({ ...opts, login: "corp_user", githubToken: "ghp_secret" });
+    const status = await readGitHubLinkStatus(opts);
+    const unlinked = await unlinkGitHubAccount(opts);
 
-    expect(result).toEqual({
-      success: false,
-      error: "Upload failed: boom",
-    });
+    for (const result of [linked, status, unlinked]) {
+      expect(result).toEqual({ ok: false, message: "Request failed: boom" });
+    }
+    mockRequestJson.mockReset();
   });
 
   it("surfaces unexpected uploadInsights exceptions", async () => {
@@ -183,7 +162,7 @@ describe("upload catch paths", () => {
     });
   });
 
-  it("falls back to unknown status for uploadSupplementalStats http failures", async () => {
+  it("falls back to an unknown status when a link failure has no status or body", async () => {
     mockRequestJson.mockResolvedValueOnce({
       ok: false,
       category: "http",
@@ -191,36 +170,10 @@ describe("upload catch paths", () => {
       body: {},
     });
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: {
-        handle: "corp_user",
-        commitsTotal: 0,
-        activeDays: 0,
-        prsMergedCount: 0,
-        prsMergedWeight: 0,
-        reviewsSubmittedCount: 0,
-        issuesClosedCount: 0,
-        linesAdded: 0,
-        linesDeleted: 0,
-        reposContributed: 0,
-        topRepoShare: 0,
-        maxCommitsIn10Min: 0,
-        totalStars: 0,
-        totalForks: 0,
-        totalWatchers: 0,
-        heatmapData: [],
-        fetchedAt: new Date().toISOString(),
-      },
-      token: "token",
-      serverUrl: "https://example.com",
+    const result = await linkGitHubAccount({
+      serverUrl: "https://example.com", authToken: "token", login: "corp_user", githubToken: "ghp_secret",
     });
 
-    expect(result).toEqual({
-      success: false,
-      error: "Server returned unknown: Unknown error",
-      serverResponse: {},
-    });
+    expect(result).toEqual({ ok: false, message: "Server returned unknown" });
   });
 });
