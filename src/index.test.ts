@@ -3,13 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ── Hoisted mocks (must be declared before vi.mock calls) ──────────────
 const mockParseArgs = vi.hoisted(() => vi.fn());
 const mockResolveToken = vi.hoisted(() => vi.fn());
-const mockFetchEmuStats = vi.hoisted(() => vi.fn());
-const mockUploadSupplementalStats = vi.hoisted(() => vi.fn());
+const mockLinkGitHubAccount = vi.hoisted(() => vi.fn());
+const mockReadGitHubLinkStatus = vi.hoisted(() => vi.fn());
+const mockUnlinkGitHubAccount = vi.hoisted(() => vi.fn());
 const mockLoadConfig = vi.hoisted(() => vi.fn());
 const mockDeleteConfig = vi.hoisted(() => vi.fn());
 const mockLogin = vi.hoisted(() => vi.fn());
 const mockCreateLogger = vi.hoisted(() => vi.fn());
-const mockFormatStatsSummary = vi.hoisted(() => vi.fn());
 const mockQueueTelemetry = vi.hoisted(() => vi.fn());
 const mockClassifyError = vi.hoisted(() => vi.fn());
 const mockEmptyTelemetryStats = vi.hoisted(() => ({
@@ -28,8 +28,13 @@ const mockResolve = vi.hoisted(() => vi.fn());
 
 vi.mock("./cli.js", () => ({ parseArgs: mockParseArgs, DEFAULT_SERVER: "https://chapa.thecreativetoken.com" }));
 vi.mock("./auth.js", () => ({ resolveToken: mockResolveToken }));
-vi.mock("./fetch-emu.js", () => ({ fetchEmuStats: mockFetchEmuStats }));
-vi.mock("./upload.js", () => ({ uploadSupplementalStats: mockUploadSupplementalStats }));
+vi.mock("./upload.js", () => ({
+  LINKED_GITHUB_REQUIRED_SCOPES: ["repo", "read:user", "read:org"],
+  LINKED_GITHUB_TOKEN_HELP_URL: "https://github.com/juan294/chapa-cli#emu-token-setup",
+  linkGitHubAccount: mockLinkGitHubAccount,
+  readGitHubLinkStatus: mockReadGitHubLinkStatus,
+  unlinkGitHubAccount: mockUnlinkGitHubAccount,
+}));
 vi.mock("./insights.js", () => ({
   get parseInsightsHtml() {
     mockInsightsModuleImported();
@@ -50,7 +55,6 @@ vi.mock("./config.js", () => ({
 }));
 vi.mock("./login.js", () => ({ login: mockLogin }));
 vi.mock("./logger.js", () => ({ createLogger: mockCreateLogger }));
-vi.mock("./shared.js", () => ({ formatStatsSummary: mockFormatStatsSummary }));
 vi.mock("./telemetry.js", () => ({
   queueTelemetry: mockQueueTelemetry,
   classifyError: mockClassifyError,
@@ -98,35 +102,12 @@ function defaultArgs(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function successFetchResult(stats: Record<string, unknown> = {}) {
-  return {
-    ok: true,
-    stats: {
-      commitsTotal: 0,
-      activeDays: 0,
-      prsMergedCount: 0,
-      prsMergedWeight: 0,
-      reviewsSubmittedCount: 0,
-      issuesClosedCount: 0,
-      linesAdded: 0,
-      linesDeleted: 0,
-      reposContributed: 0,
-      totalStars: 0,
-      totalForks: 0,
-      ...stats,
-    },
-  };
+function linkSuccess(overrides: Record<string, unknown> = {}) {
+  return { ok: true, login: "corp_user", alsoRegistered: false, collection: "queued", ...overrides };
 }
 
-function failedFetchResult(
-  error = "GraphQL HTTP 401: Unauthorized",
-  errorCategory: string = "auth",
-) {
-  return {
-    ok: false,
-    error,
-    errorCategory,
-  };
+function linkFailure(status: number, message: string, code?: string) {
+  return { ok: false, status, message, ...(code && { code }) };
 }
 
 /**
@@ -203,11 +184,14 @@ describe("index.ts command dispatch", () => {
     // Safe defaults for all downstream mocks
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue(null);
-    mockFetchEmuStats.mockResolvedValue(failedFetchResult("mock", "unknown"));
-    mockUploadSupplementalStats.mockResolvedValue({ success: false, error: "mock" });
+    mockLinkGitHubAccount.mockResolvedValue(linkFailure(500, "mock"));
+    mockReadGitHubLinkStatus.mockResolvedValue({
+      ok: true,
+      link: { linked: true, login: "corp_user", needsReconnect: false, connectedAt: "2026-10-08T10:00:00Z" },
+    });
+    mockUnlinkGitHubAccount.mockResolvedValue({ ok: true });
     mockLogin.mockResolvedValue(undefined);
     mockDeleteConfig.mockReturnValue(false);
-    mockFormatStatsSummary.mockReturnValue("  Commits:  42\n  PRs merged:  5");
     mockQueueTelemetry.mockResolvedValue(undefined);
     mockClassifyError.mockReturnValue("unknown");
     mockParseInsightsHtml.mockReturnValue({
@@ -303,8 +287,7 @@ describe("index.ts command dispatch", () => {
     }));
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 1 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
@@ -329,7 +312,7 @@ describe("index.ts command dispatch", () => {
     const allWarns = spyOutput(warnSpy);
     expect(allWarns).toContain("--insecure");
     expect(allWarns).toContain("Chapa server");
-    expect(allWarns).toContain("GitHub API calls still validate TLS");
+    expect(allWarns).not.toContain("GitHub API calls");
 
     // Restore
     if (originalVal !== undefined) {
@@ -355,7 +338,7 @@ describe("index.ts command dispatch", () => {
     }
   });
 
-  it("forwards insecure: true to uploadSupplementalStats on merge", async () => {
+  it("forwards insecure: true to linkGitHubAccount on merge", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
         command: "merge",
@@ -367,42 +350,13 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 5 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({ insecure: true }),
     );
-  });
-
-  it("does NOT forward insecure to fetchEmuStats (GitHub always validates TLS)", async () => {
-    mockParseArgs.mockReturnValue(
-      defaultArgs({
-        command: "merge",
-        emuHandle: "foo",
-        handle: "juan294",
-        token: "auth-tok",
-        insecure: true,
-      }),
-    );
-    mockLoadConfig.mockReturnValue(null);
-    mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 5 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
-
-    await runMain();
-
-    expect(mockFetchEmuStats).toHaveBeenCalled();
-    const fetchEmuCalls = mockFetchEmuStats.mock.calls;
-    for (const callArgs of fetchEmuCalls) {
-      // callArgs[2] is the opts object passed to fetchEmuStats
-      const opts = callArgs[2] as Record<string, unknown> | undefined;
-      if (opts != null) {
-        expect(opts).not.toHaveProperty("insecure");
-      }
-    }
   });
 
   // ── login command ────────────────────────────────────────────────────
@@ -541,7 +495,7 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = spyOutput(errorSpy);
     expect(output).toContain("Usage:");
-    expect(output).toContain("login | logout | merge | insights");
+    expect(output).toContain("login | logout | merge | unlink | insights");
     expect(output).toContain("--help");
   });
 
@@ -553,7 +507,7 @@ describe("index.ts command dispatch", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = spyOutput(errorSpy);
     expect(output).toContain("Unknown command 'mrege'");
-    expect(output).toContain("login | logout | merge | insights");
+    expect(output).toContain("login | logout | merge | unlink | insights");
   });
 
   // ── merge: logger creation ──────────────────────────────────────────
@@ -629,67 +583,9 @@ describe("index.ts command dispatch", () => {
     expect(output).toContain("chapa login");
   });
 
-  // ── merge: fetchEmuStats fails ───────────────────────────────────────
-
-  it("exits 1 when fetchEmuStats returns a typed failure", async () => {
-    mockParseArgs.mockReturnValue(
-      defaultArgs({
-        command: "merge",
-        emuHandle: "corp_user",
-        handle: "juan294",
-        token: "auth-tok",
-      }),
-    );
-    mockLoadConfig.mockReturnValue(null);
-    mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(
-      failedFetchResult("GitHub user not found or inaccessible", "graphql"),
-    );
-
-    await runMain();
-
-    expect(mockExit).toHaveBeenCalledWith(1);
-    expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
-  });
-
-  it("sends failure telemetry when GitHub fetch fails before upload", async () => {
-    mockParseArgs.mockReturnValue(
-      defaultArgs({
-        command: "merge",
-        emuHandle: "corp_user",
-        handle: "juan294",
-        token: "auth-tok",
-      }),
-    );
-    mockLoadConfig.mockReturnValue(null);
-    mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(
-      failedFetchResult("Request timed out after 30000ms", "network"),
-    );
-
-    await runMain();
-
-    expect(mockQueueTelemetry).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        command: "merge",
-        stage: "fetch",
-        success: false,
-        errorCategory: "network",
-        targetHandle: "juan294",
-        sourceHandle: "corp_user",
-        stats: expect.objectContaining({ commitsTotal: 0 }),
-        timing: expect.objectContaining({ uploadMs: 0 }),
-      }),
-      expect.anything(),
-    );
-    expect(mockQueueTelemetry).toHaveBeenCalledTimes(1);
-    expect(mockUploadSupplementalStats).not.toHaveBeenCalled();
-  });
-
   // ── merge: upload fails ──────────────────────────────────────────────
 
-  it("exits 1 when upload returns failure", async () => {
+  it("exits 1 when the link request fails", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
         command: "merge",
@@ -700,24 +596,19 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 10,
-      prsMergedCount: 2,
-      reviewsSubmittedCount: 1,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({
-      success: false,
-      error: "Server returned 401: Invalid token",
-    });
+    mockLinkGitHubAccount.mockResolvedValue(
+      linkFailure(401, "Your Chapa CLI login expired. Run `chapa login` again.", "authentication_required"),
+    );
 
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = loggerOutput(mockLogger.error);
-    expect(output).toContain("Server returned 401");
+    expect(output).toContain("Your Chapa CLI login expired");
+    expect(mockReadGitHubLinkStatus).not.toHaveBeenCalled();
   });
 
-  it("sends failure telemetry when upload fails", async () => {
+  it("sends failure telemetry when the link request fails", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
         command: "merge",
@@ -728,17 +619,7 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 10,
-      reposContributed: 2,
-      prsMergedCount: 2,
-      activeDays: 5,
-      reviewsSubmittedCount: 1,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({
-      success: false,
-      error: "Server returned 401: Invalid token",
-    });
+    mockLinkGitHubAccount.mockResolvedValue(linkFailure(401, "Run `chapa login` first.", "authentication_required"));
     mockClassifyError.mockReturnValue("auth");
 
     await runMain();
@@ -771,30 +652,22 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 42,
-      prsMergedCount: 5,
-      reviewsSubmittedCount: 3,
-      reposContributed: 7,
-      activeDays: 180,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockFetchEmuStats).toHaveBeenCalledWith("corp_user", "emu-tok", expect.objectContaining({ logger: mockLogger }));
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
-      expect.objectContaining({
-        targetHandle: "juan294",
-        sourceHandle: "corp_user",
-        token: "auth-tok",
-        logger: mockLogger,
-      }),
-    );
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith({
+      serverUrl: "https://chapa.thecreativetoken.com",
+      authToken: "auth-tok",
+      insecure: false,
+      logger: mockLogger,
+      login: "corp_user",
+      githubToken: "emu-tok",
+    });
+    expect(mockReadGitHubLinkStatus).toHaveBeenCalledTimes(1);
 
     const output = loggerOutput(mockLogger.info);
-    expect(output).toContain("Success!");
-    expect(output).toContain("Stats merged for");
+    expect(output).toContain("Linked corp_user to juan294.");
     expect(mockExit).not.toHaveBeenCalled();
   });
 
@@ -809,43 +682,11 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 42,
-      prsMergedCount: 5,
-      reviewsSubmittedCount: 3,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
     expect(mockInsightsModuleImported).not.toHaveBeenCalled();
-  });
-
-  it("shows formatStatsSummary output in default merge", async () => {
-    mockParseArgs.mockReturnValue(
-      defaultArgs({
-        command: "merge",
-        emuHandle: "corp_user",
-        handle: "juan294",
-        token: "auth-tok",
-      }),
-    );
-    mockLoadConfig.mockReturnValue(null);
-    mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 42,
-      prsMergedCount: 5,
-      reviewsSubmittedCount: 3,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
-    mockFormatStatsSummary.mockReturnValue("  Commits: 42\n  Repos: 7");
-
-    await runMain();
-
-    expect(mockFormatStatsSummary).toHaveBeenCalled();
-    const output = loggerOutput(mockLogger.info);
-    expect(output).toContain("Commits: 42");
-    expect(output).toContain("Repos: 7");
   });
 
   it("sends success telemetry on successful merge", async () => {
@@ -859,14 +700,7 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 42,
-      reposContributed: 7,
-      prsMergedCount: 5,
-      activeDays: 180,
-      reviewsSubmittedCount: 3,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
@@ -878,8 +712,8 @@ describe("index.ts command dispatch", () => {
         success: true,
         targetHandle: "juan294",
         sourceHandle: "corp_user",
-        stats: expect.objectContaining({ commitsTotal: 42 }),
-        timing: expect.objectContaining({ fetchMs: expect.any(Number) }),
+        stats: mockEmptyTelemetryStats,
+        timing: expect.objectContaining({ uploadMs: expect.any(Number), totalMs: expect.any(Number) }),
         cliVersion: expect.any(String),
       }),
       expect.anything(),
@@ -901,20 +735,7 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 42,
-      activeDays: 180,
-      prsMergedCount: 5,
-      prsMergedWeight: 8.2,
-      reviewsSubmittedCount: 3,
-      issuesClosedCount: 1,
-      linesAdded: 2340,
-      linesDeleted: 890,
-      reposContributed: 7,
-      totalStars: 12,
-      totalForks: 3,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
@@ -924,8 +745,9 @@ describe("index.ts command dispatch", () => {
     expect(jsonOutput.success).toBe(true);
     expect(jsonOutput.targetHandle).toBe("juan294");
     expect(jsonOutput.sourceHandle).toBe("corp_user");
-    expect(jsonOutput.stats.commitsTotal).toBe(42);
-    expect(jsonOutput.stats.reposContributed).toBe(7);
+    expect(jsonOutput.linked).toBe(true);
+    expect(jsonOutput.collection).toBe("queued");
+    expect(jsonOutput.stats).toBeUndefined();
     expect(jsonOutput.timing).toBeDefined();
     expect(jsonOutput.cliVersion).toBeDefined();
     // Logger info should NOT have been called for success message in JSON mode
@@ -945,17 +767,7 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 10,
-      reposContributed: 2,
-      prsMergedCount: 1,
-      activeDays: 5,
-      reviewsSubmittedCount: 0,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({
-      success: false,
-      error: "Server returned 500: Internal Server Error",
-    });
+    mockLinkGitHubAccount.mockResolvedValue(linkFailure(503, "Chapa could not save the link. Try again.", "persist_failed"));
 
     await runMain();
 
@@ -963,7 +775,9 @@ describe("index.ts command dispatch", () => {
     const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
     const jsonOutput = JSON.parse(written);
     expect(jsonOutput.success).toBe(false);
-    expect(jsonOutput.error).toContain("500");
+    expect(jsonOutput.status).toBe(503);
+    expect(jsonOutput.code).toBe("persist_failed");
+    expect(jsonOutput.error).toBe("Chapa could not save the link. Try again.");
   });
 
   // ── merge: uses config fallback for handle and token ─────────────────
@@ -978,22 +792,17 @@ describe("index.ts command dispatch", () => {
       server: "https://custom.server.com",
     });
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 10,
-      prsMergedCount: 1,
-      reviewsSubmittedCount: 0,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({
-        targetHandle: "config-user",
-        token: "config-auth-tok",
+        authToken: "config-auth-tok",
         serverUrl: "https://custom.server.com",
       }),
     );
+    expect(loggerOutput(mockLogger.info)).toContain("to config-user.");
     expect(mockExit).not.toHaveBeenCalled();
   });
 
@@ -1007,8 +816,7 @@ describe("index.ts command dispatch", () => {
       server: "https://custom.server.com",
     });
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
@@ -1034,7 +842,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    expect(mockFetchEmuStats).not.toHaveBeenCalled();
+    expect(mockLinkGitHubAccount).not.toHaveBeenCalled();
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("HTTPS");
     expect(output).toContain("localhost");
@@ -1053,12 +861,11 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({ serverUrl: "http://localhost:3001" }),
     );
     expect(mockExit).not.toHaveBeenCalled();
@@ -1077,12 +884,11 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({ serverUrl: "http://[::1]:3000" }),
     );
     expect(mockExit).not.toHaveBeenCalled();
@@ -1101,12 +907,11 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({ serverUrl: "http://127.0.0.1:3000" }),
     );
     expect(mockExit).not.toHaveBeenCalled();
@@ -1129,7 +934,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
-    expect(mockFetchEmuStats).not.toHaveBeenCalled();
+    expect(mockLinkGitHubAccount).not.toHaveBeenCalled();
     const output = loggerOutput(mockLogger.error);
     expect(output).toContain("HTTPS");
     expect(output).toContain("localhost");
@@ -1585,12 +1390,11 @@ describe("index.ts command dispatch", () => {
       server: "https://saved.server.com",
     });
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 10 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({
         serverUrl: "https://chapa.thecreativetoken.com",
       }),
@@ -1651,16 +1455,11 @@ describe("index.ts command dispatch", () => {
       server: "https://saved.server.com",
     });
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({
-      commitsTotal: 10,
-      prsMergedCount: 1,
-      reviewsSubmittedCount: 0,
-    }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: true });
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
 
     await runMain();
 
-    expect(mockUploadSupplementalStats).toHaveBeenCalledWith(
+    expect(mockLinkGitHubAccount).toHaveBeenCalledWith(
       expect.objectContaining({
         serverUrl: "https://my-custom.example.com",
       }),
@@ -1704,7 +1503,7 @@ describe("index.ts command dispatch", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
-  it("exits 1 when fetchEmuStats throws an unexpected error", async () => {
+  it("exits 1 when linkGitHubAccount throws an unexpected error", async () => {
     mockParseArgs.mockReturnValue(
       defaultArgs({
         command: "merge",
@@ -1715,13 +1514,13 @@ describe("index.ts command dispatch", () => {
     );
     mockLoadConfig.mockReturnValue(null);
     mockResolveToken.mockReturnValue("emu-tok");
-    mockFetchEmuStats.mockRejectedValue(new Error("GraphQL schema mismatch"));
+    mockLinkGitHubAccount.mockRejectedValue(new Error("link exploded"));
 
     await runMain();
 
     expect(mockExit).toHaveBeenCalledWith(1);
     const output = spyOutput(errorSpy);
-    expect(output).toContain("GraphQL schema mismatch");
+    expect(output).toContain("link exploded");
   });
 
   it("prefers the injected build-time version when __CLI_VERSION__ is defined", async () => {
@@ -1812,45 +1611,6 @@ describe("index.ts command dispatch", () => {
     expect(loggerOutput(mockLogger.info)).not.toContain("Craft Score:");
   });
 
-  it("emits JSON when merge fetch fails in json mode", async () => {
-    mockParseArgs.mockReturnValue(defaultArgs({
-      command: "merge",
-      handle: "juan294",
-      emuHandle: "corp_user",
-      emuToken: "emu-token",
-      token: "auth-token",
-      json: true,
-    }));
-    mockResolveToken.mockReturnValue("emu-token");
-    mockFetchEmuStats.mockResolvedValue(failedFetchResult("fetch broke", "network"));
-
-    await runMain();
-
-    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
-    const payload = JSON.parse(written);
-    expect(payload.success).toBe(false);
-    expect(payload.error).toBe("fetch broke");
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
-
-  it("falls back to Upload failed when merge upload omits an error message", async () => {
-    mockParseArgs.mockReturnValue(defaultArgs({
-      command: "merge",
-      handle: "juan294",
-      emuHandle: "corp_user",
-      emuToken: "emu-token",
-      token: "auth-token",
-    }));
-    mockResolveToken.mockReturnValue("emu-token");
-    mockFetchEmuStats.mockResolvedValue(successFetchResult({ commitsTotal: 1 }));
-    mockUploadSupplementalStats.mockResolvedValue({ success: false });
-
-    await runMain();
-
-    expect(loggerOutput(mockLogger.error)).toContain("Error: undefined");
-    expect(mockExit).toHaveBeenCalledWith(1);
-  });
-
   it("classifies non-Error merge failures through the generic catch path", async () => {
     mockParseArgs.mockReturnValue(defaultArgs({
       command: "merge",
@@ -1860,7 +1620,7 @@ describe("index.ts command dispatch", () => {
       token: "auth-token",
     }));
     mockResolveToken.mockReturnValue("emu-token");
-    mockFetchEmuStats.mockRejectedValue("plain failure");
+    mockLinkGitHubAccount.mockRejectedValue("plain failure");
 
     await runMain();
 
@@ -1886,5 +1646,97 @@ describe("index.ts command dispatch", () => {
 
     expect(spyOutput(errorSpy)).toContain("Invalid server URL: not a url");
     expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  // ── unlink command ───────────────────────────────────────────────────
+
+  it("help text lists the unlink command and the required token scopes", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ help: true }));
+
+    await runMain();
+
+    const output = spyOutput(logSpy);
+    expect(output).toContain("chapa unlink");
+    expect(output).toContain("repo, read:user, read:org");
+  });
+
+  it("unlink calls unlinkGitHubAccount with the saved server and token", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "unlink" }));
+    mockLoadConfig.mockReturnValue({ token: "tok", handle: "user", server: "https://chapa.thecreativetoken.com" });
+
+    await runMain();
+
+    expect(mockUnlinkGitHubAccount).toHaveBeenCalledWith({
+      serverUrl: "https://chapa.thecreativetoken.com",
+      authToken: "tok",
+      insecure: false,
+      logger: mockLogger,
+    });
+    expect(loggerOutput(mockLogger.info)).toContain("Unlinked the second GitHub account from user.");
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("unlink with --token and no saved handle omits the handle", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "unlink", token: "tok" }));
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.info)).toContain("Unlinked the second GitHub account.");
+  });
+
+  it("unlink --json writes the failure and exits 1", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({ command: "unlink", token: "tok", json: true }));
+    mockUnlinkGitHubAccount.mockResolvedValue(linkFailure(503, "Chapa could not remove the link. Try again.", "persist_failed"));
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    expect(JSON.parse(written)).toEqual(expect.objectContaining({
+      success: false, status: 503, code: "persist_failed", error: "Chapa could not remove the link. Try again.",
+    }));
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("unlink rejects non-HTTPS servers outside localhost", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "unlink", token: "tok", server: "http://insecure.example.com", serverExplicit: true,
+    }));
+
+    await runMain();
+
+    expect(mockUnlinkGitHubAccount).not.toHaveBeenCalled();
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
+
+  it("merge --json reports the recovery command when the status needs a new token", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge", emuHandle: "corp_user", handle: "juan294", token: "auth-tok", json: true,
+    }));
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
+    mockReadGitHubLinkStatus.mockResolvedValue({
+      ok: true, link: { linked: true, login: "corp_user", needsReconnect: true },
+    });
+
+    await runMain();
+
+    const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
+    expect(JSON.parse(written).recoveryCommand).toBe("npx chapa-cli@latest merge --emu-handle corp_user --emu-token <token>");
+    expect(mockExit).not.toHaveBeenCalled();
+  });
+
+  it("merge debug-logs a failed status read and still succeeds", async () => {
+    mockParseArgs.mockReturnValue(defaultArgs({
+      command: "merge", emuHandle: "corp_user", handle: "juan294", token: "auth-tok",
+    }));
+    mockResolveToken.mockReturnValue("emu-tok");
+    mockLinkGitHubAccount.mockResolvedValue(linkSuccess());
+    mockReadGitHubLinkStatus.mockResolvedValue({ ok: false, status: 503, message: "status_unavailable" });
+
+    await runMain();
+
+    expect(loggerOutput(mockLogger.debug)).toContain("Link status check failed: status_unavailable");
+    expect(mockExit).not.toHaveBeenCalled();
   });
 });

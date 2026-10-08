@@ -3,7 +3,7 @@ import { parseArgs as nodeParseArgs } from "node:util";
 export const DEFAULT_SERVER = "https://chapa.thecreativetoken.com";
 
 export interface CliArgs {
-  command: "merge" | "login" | "logout" | "insights" | null;
+  command: "merge" | "unlink" | "login" | "logout" | "insights" | null;
   unknownCommand: string | null;
   handle?: string;
   emuHandle?: string;
@@ -19,7 +19,7 @@ export interface CliArgs {
   help: boolean;
 }
 
-const VALID_COMMANDS = ["merge", "login", "logout", "insights"] as const;
+const VALID_COMMANDS = ["merge", "unlink", "login", "logout", "insights"] as const;
 const STRING_OPTIONS = new Set(["handle", "emu-handle", "emu-token", "token", "file", "server"]);
 
 function extractCommand(argv: string[]): {

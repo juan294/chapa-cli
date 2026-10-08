@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-chapa-cli is an open-source CLI tool that merges GitHub Enterprise Managed User (EMU) contributions into [Chapa](https://chapa.thecreativetoken.com) developer impact badges. It connects to the Chapa server via HTTP and uses GitHub's GraphQL API to fetch EMU contribution data.
+chapa-cli is an open-source CLI tool that links a second GitHub account (for example an Enterprise Managed User (EMU) account) to a [Chapa](https://chapa.thecreativetoken.com) developer impact badge. It connects to the Chapa server via HTTP; the server verifies the linked account's token and collects its activity daily.
 
 ## Architecture
 
@@ -11,10 +11,9 @@ src/
 ├── index.ts       # CLI entry point, command dispatch, error boundary
 ├── cli.ts         # Argument parsing (Node parseArgs, strict mode)
 ├── http.ts        # Shared HTTP transport, timeouts, and request normalization
-├── shared.ts      # Types, GraphQL query, stats aggregation, shared utilities
+├── shared.ts      # URL and error-chain utilities, insights payload type
 ├── login.ts       # OAuth device flow (browser auto-open)
-├── fetch-emu.ts   # GitHub GraphQL integration
-├── upload.ts      # Chapa server upload (merge stats)
+├── upload.ts      # Linked GitHub account API (merge link, status, unlink)
 ├── insights.ts    # Lazy-loaded Claude Code HTML parsing + upload
 ├── config.ts      # Credential storage (~/.chapa/credentials.json)
 ├── auth.ts        # Token resolution
@@ -22,13 +21,13 @@ src/
 └── logger.ts      # Structured logging (verbose/JSON modes)
 ```
 
-`index.ts` eagerly loads the core merge/login path and lazy-loads
+`index.ts` eagerly loads the core merge/unlink/login path and lazy-loads
 `insights.ts` only when the `insights` command runs. `http.ts`
 centralizes timeout handling, auth/header wiring, and response
-normalization for GitHub fetches, Chapa uploads, login polling,
+normalization for the linked-account calls, login polling,
 insights upload/recalculate, and telemetry.
 
-Six API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, stats upload, insights upload, badge recalculate, and telemetry.
+Eight API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, link a GitHub account, link status, unlink, insights upload, badge recalculate, and telemetry. See `docs/server-contract.md`.
 
 ## Tech Stack
 
@@ -110,7 +109,7 @@ publishing with an opaque 401 until `npm trust github chapa-cli` is re-run.
 ## Security Considerations
 
 - Never commit tokens or credentials
-- EMU tokens are passed via CLI flags or environment variables, never stored
+- EMU (linked account) tokens are passed via CLI flags or environment variables and never stored locally, logged or put in telemetry. They are sent once, only in the JSON body of `POST /api/github-linked` (never in a header); the Chapa server stores them encrypted
 - Personal auth tokens are stored in `~/.chapa/credentials.json` with user-only permissions
 - The `--insecure` flag exists for corporate TLS interception but should not be used outside that context
 

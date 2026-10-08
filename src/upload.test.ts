@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadSupplementalStats } from "./upload";
+import { linkGitHubAccount, readGitHubLinkStatus, unlinkGitHubAccount } from "./upload";
 import { uploadInsights, triggerRecalculate } from "./insights";
-import type { InsightsUpload, StatsData } from "./shared";
+import type { InsightsUpload } from "./shared";
 
 const mockFetch = vi.fn();
 
@@ -10,28 +10,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
-}
-
-function makeStats(): StatsData {
-  return {
-    handle: "corp_user",
-    commitsTotal: 30,
-    activeDays: 10,
-    prsMergedCount: 3,
-    prsMergedWeight: 5,
-    reviewsSubmittedCount: 2,
-    issuesClosedCount: 1,
-    linesAdded: 500,
-    linesDeleted: 200,
-    reposContributed: 2,
-    topRepoShare: 0.6,
-    maxCommitsIn10Min: 3,
-    totalStars: 0,
-    totalForks: 0,
-    totalWatchers: 0,
-    heatmapData: [],
-    fetchedAt: new Date().toISOString(),
-  };
 }
 
 function makeInsightsData(): InsightsUpload {
@@ -81,8 +59,27 @@ function makeInsightsData(): InsightsUpload {
   };
 }
 
-describe("uploadSupplementalStats", () => {
+const SERVER = "https://chapa.thecreativetoken.com";
+const CLI_TOKEN = "chapa-cli-token";
+const EMU_TOKEN = "ghp_emuSecretToken123";
+
+function linkOptions(overrides: Record<string, unknown> = {}) {
+  return {
+    serverUrl: SERVER,
+    authToken: CLI_TOKEN,
+    login: "corp_user",
+    githubToken: EMU_TOKEN,
+    ...overrides,
+  };
+}
+
+function sentHeaders(callIndex = 0): Record<string, string> {
+  return (mockFetch.mock.calls[callIndex]![1]!.headers ?? {}) as Record<string, string>;
+}
+
+describe("linkGitHubAccount", () => {
   beforeEach(() => {
+    mockFetch.mockReset();
     vi.stubGlobal("fetch", mockFetch);
   });
 
@@ -90,171 +87,239 @@ describe("uploadSupplementalStats", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends POST with correct body and auth header", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
+  it("posts exactly { login, token } to /api/github-linked with the CLI Bearer token", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "Corp_User", alsoRegistered: false, collection: "queued",
+    }));
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
+    const result = await linkGitHubAccount(linkOptions());
 
-    expect(result.success).toBe(true);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://chapa.thecreativetoken.com/api/supplemental",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer gho_personal",
-          "Content-Type": "application/json",
-        }),
-      }),
-    );
-
-    const body = JSON.parse(mockFetch.mock.calls[0]![1]!.body);
-    expect(body.targetHandle).toBe("juan294");
-    expect(body.sourceHandle).toBe("corp_user");
-    expect(body.stats).toEqual(expect.objectContaining({ handle: "corp_user", commitsTotal: 30 }));
+    expect(result).toEqual({ ok: true, login: "Corp_User", alsoRegistered: false, collection: "queued" });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0]!;
+    expect(url).toBe(`${SERVER}/api/github-linked`);
+    expect(init.method).toBe("POST");
+    expect(sentHeaders().Authorization).toBe(`Bearer ${CLI_TOKEN}`);
+    expect(JSON.parse(init.body)).toEqual({ login: "corp_user", token: EMU_TOKEN });
   });
 
-  it("returns error message on 401", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ error: "Invalid token" }, 401));
+  it("never sends the linked account token in any header", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "corp_user", alsoRegistered: false, collection: "queued",
+    }));
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "bad_token",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
+    await linkGitHubAccount(linkOptions());
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("401");
+    for (const value of Object.values(sentHeaders())) {
+      expect(value).not.toContain(EMU_TOKEN);
+    }
   });
 
-  it("returns error message on 403", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ error: "Handle mismatch" }, 403));
+  it("never writes the linked account token to the verbose logger", async () => {
+    const lines: string[] = [];
+    const logger = {
+      info: (m: string) => lines.push(m), debug: (m: string) => lines.push(m),
+      warn: (m: string) => lines.push(m), error: (m: string) => lines.push(m),
+      time: () => {}, timeEnd: () => 0, getTimings: () => ({}),
+    };
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "corp_user", alsoRegistered: true, collection: "deferred",
+    }));
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "wrong_user_token",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
+    await linkGitHubAccount(linkOptions({ logger }));
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("403");
+    expect(lines.join("\n")).not.toContain(EMU_TOKEN);
   });
 
-  it("returns error on network failure", async () => {
-    mockFetch.mockRejectedValue(new Error("Connection refused"));
+  it("strips trailing slashes from the server URL", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "corp_user", alsoRegistered: false, collection: "queued",
+    }));
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
+    await linkGitHubAccount(linkOptions({ serverUrl: `${SERVER}///` }));
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Connection refused");
+    expect(mockFetch.mock.calls[0]![0]).toBe(`${SERVER}/api/github-linked`);
   });
 
-  it("falls back when res.json() rejects on error response", async () => {
-    mockFetch.mockResolvedValue({
+  it("reports alsoRegistered and a deferred collection", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "corp_user", alsoRegistered: true, collection: "deferred",
+    }));
+
+    const result = await linkGitHubAccount(linkOptions());
+
+    expect(result).toEqual({ ok: true, login: "corp_user", alsoRegistered: true, collection: "deferred" });
+  });
+
+  it("returns the server error code, message, scopes and help link on 422", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      error: "insufficient_scope",
+      message: "The token needs these scopes: repo, read:user, read:org.",
+      requiredScopes: ["repo", "read:user", "read:org"],
+      missingScopes: ["read:org"],
+      helpUrl: "https://github.com/juan294/chapa-cli#emu-token-setup",
+    }, 422));
+
+    const result = await linkGitHubAccount(linkOptions());
+
+    expect(result).toEqual({
       ok: false,
-      status: 500,
-      text: async () => "(unreadable)",
+      status: 422,
+      code: "insufficient_scope",
+      message: "The token needs these scopes: repo, read:user, read:org.",
+      missingScopes: ["read:org"],
+      helpUrl: "https://github.com/juan294/chapa-cli#emu-token-setup",
     });
-
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("500");
-    // Fallback should produce "Unknown error" since json() failed
-    expect(result.error).toContain("Unknown error");
   });
 
-  it("rejects empty 2xx responses instead of treating them as success", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => "",
-    });
+  it("falls back to the error field when a 410 body has no message", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      error: "chapa merge changed. Update: npx chapa-cli@latest merge --emu-handle corp_user",
+    }, 410));
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
+    const result = await linkGitHubAccount(linkOptions());
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Upload failed: Invalid JSON response");
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      status: 410,
+      message: "chapa merge changed. Update: npx chapa-cli@latest merge --emu-handle corp_user",
+    }));
   });
 
-  it("rejects malformed 2xx JSON responses instead of treating them as success", async () => {
-    mockFetch.mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => "{",
-    });
+  it("names the HTTP status when an error body is not JSON", async () => {
+    mockFetch.mockResolvedValue(new Response("Bad gateway", { status: 502 }));
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
+    const result = await linkGitHubAccount(linkOptions());
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Upload failed: Invalid JSON response");
+    expect(result).toEqual({ ok: false, status: 502, message: "Server returned 502" });
   });
 
-  it("strips trailing slash from server URL", async () => {
+  it("reports network failures without the token", async () => {
+    mockFetch.mockRejectedValue(new Error("ECONNREFUSED"));
+
+    const result = await linkGitHubAccount(linkOptions());
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.message).toBe("Request failed: ECONNREFUSED");
+  });
+
+  it("rejects a 2xx answer that does not confirm the link", async () => {
     mockFetch.mockResolvedValue(jsonResponse({ success: true }));
 
-    await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com/",
-    });
+    const result = await linkGitHubAccount(linkOptions());
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://chapa.thecreativetoken.com/api/supplemental",
-      expect.anything(),
-    );
+    expect(result).toEqual({ ok: false, status: 200, message: "Unexpected response from the server" });
   });
 
-  it("returns normalized timeout errors", async () => {
-    const timeoutError = new Error("The operation was aborted due to timeout");
-    timeoutError.name = "TimeoutError";
-    mockFetch.mockRejectedValue(timeoutError);
+  it("rejects an empty 2xx answer", async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200, text: async () => "" });
 
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
+    const result = await linkGitHubAccount(linkOptions());
+
+    expect(result).toEqual({ ok: false, status: 200, message: "Unexpected response from the server" });
+  });
+
+  it("refuses to send credentials to a plain http server", async () => {
+    const result = await linkGitHubAccount(linkOptions({ serverUrl: "http://chapa.thecreativetoken.com" }));
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(!result.ok && result.message).toContain("non-HTTPS");
+  });
+});
+
+describe("readGitHubLinkStatus", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads /api/github-linked/status with the CLI Bearer token", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "corp_user", needsReconnect: true, connectedAt: "2026-10-08T10:00:00Z",
+    }));
+
+    const result = await readGitHubLinkStatus({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result).toEqual({
+      ok: true,
+      link: { linked: true, login: "corp_user", needsReconnect: true, connectedAt: "2026-10-08T10:00:00Z" },
     });
+    const [url, init] = mockFetch.mock.calls[0]!;
+    expect(url).toBe(`${SERVER}/api/github-linked/status`);
+    expect(init.method).toBe("GET");
+    expect(sentHeaders().Authorization).toBe(`Bearer ${CLI_TOKEN}`);
+  });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("Upload failed: Request timed out after 30000ms");
+  it("reports an unlinked account", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ linked: false }));
+
+    const result = await readGitHubLinkStatus({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result).toEqual({ ok: true, link: { linked: false } });
+  });
+
+  it("returns a failure for an error answer", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ error: "status_unavailable" }, 503));
+
+    const result = await readGitHubLinkStatus({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result).toEqual({ ok: false, status: 503, code: "status_unavailable", message: "status_unavailable" });
+  });
+
+  it("rejects a linked answer without a login", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ linked: true }));
+
+    const result = await readGitHubLinkStatus({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("unlinkGitHubAccount", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("posts to /api/github-linked/disconnect with the CLI Bearer token and no body", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ success: true, linked: false }));
+
+    const result = await unlinkGitHubAccount({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result).toEqual({ ok: true, wasLinked: true });
+    const [url, init] = mockFetch.mock.calls[0]!;
+    expect(url).toBe(`${SERVER}/api/github-linked/disconnect`);
+    expect(init.method).toBe("POST");
+    expect(init.body).toBeUndefined();
+    expect(sentHeaders().Authorization).toBe(`Bearer ${CLI_TOKEN}`);
+  });
+
+  it("returns the server message when the delete fails", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      error: "persist_failed", message: "Chapa could not remove the link. Try again.",
+    }, 503));
+
+    const result = await unlinkGitHubAccount({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result).toEqual({
+      ok: false, status: 503, code: "persist_failed", message: "Chapa could not remove the link. Try again.",
+    });
+  });
+
+  it("rejects a 2xx answer that does not confirm the unlink", async () => {
+    mockFetch.mockResolvedValue(jsonResponse({ success: true, linked: true }));
+
+    const result = await unlinkGitHubAccount({ serverUrl: SERVER, authToken: CLI_TOKEN });
+
+    expect(result.ok).toBe(false);
   });
 });
 
@@ -310,62 +375,6 @@ describe("HTTPS enforcement (#95)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it("rejects upload over plain http with a token", async () => {
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "http://chapa.thecreativetoken.com",
-    });
-
-    expect(mockFetch).not.toHaveBeenCalled();
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("non-HTTPS");
-  });
-
-  it("allows upload over https", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
-
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "https://chapa.thecreativetoken.com",
-    });
-
-    expect(result.success).toBe(true);
-  });
-
-  it("allows upload over http://localhost", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
-
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "http://localhost:3000",
-    });
-
-    expect(result.success).toBe(true);
-  });
-
-  it("allows upload over http://127.0.0.1", async () => {
-    mockFetch.mockResolvedValue(jsonResponse({ success: true }));
-
-    const result = await uploadSupplementalStats({
-      targetHandle: "juan294",
-      sourceHandle: "corp_user",
-      stats: makeStats(),
-      token: "gho_personal",
-      serverUrl: "http://127.0.0.1:3000",
-    });
-
-    expect(result.success).toBe(true);
   });
 
   it("rejects uploadInsights over plain http with a token", async () => {
