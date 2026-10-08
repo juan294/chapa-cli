@@ -7,11 +7,11 @@
 
 ![Chapa Badge](https://chapa.thecreativetoken.com/u/juan294/badge.svg)
 
-Merge GitHub Enterprise Managed User (EMU) contributions into your [Chapa](https://chapa.thecreativetoken.com) developer impact badge.
+Link a second GitHub account, such as a GitHub Enterprise Managed User (EMU) work account, to your [Chapa](https://chapa.thecreativetoken.com) developer impact badge.
 
 ## Why?
 
-If you use a GitHub EMU account at work, your contributions live on a separate identity from your personal GitHub. Chapa badges only see your personal account. This CLI bridges the gap by fetching your EMU stats and merging them into your Chapa badge.
+If you use a GitHub EMU account at work, your contributions live on a separate identity from your personal GitHub. Chapa badges only see your personal account. This CLI links the second account to your Chapa profile. Chapa then collects that account's activity every day and counts it in your badge, the same way it counts your personal account.
 
 ## Install
 
@@ -27,11 +27,11 @@ Requires Node.js 20+.
 # 1. Log in with your personal GitHub (opens browser)
 chapa login
 
-# 2. Create an EMU token with scopes: repo, read:user, read:org, read:discussion
+# 2. Create a token on your EMU account with scopes: repo, read:user, read:org
 #    Settings > Developer settings > Personal access tokens (on your EMU account)
 #    If your org uses SAML SSO, also authorize the token for your org (see below)
 
-# 3. Merge your EMU contributions
+# 3. Link the EMU account to your Chapa profile
 chapa merge --emu-handle your-emu-handle --emu-token ghp_your_emu_token
 ```
 
@@ -49,7 +49,7 @@ chapa login --verbose                        # debug polling
 ```
 
 When you log in to a non-default server, that server is saved in `~/.chapa/credentials.json`.
-Later `merge` and `insights` commands will reuse it until you pass `--server` explicitly.
+Later `merge`, `unlink` and `insights` commands will reuse it until you pass `--server` explicitly.
 
 ### `chapa logout`
 
@@ -72,13 +72,29 @@ chapa insights --file report.html --json --verbose
 
 ### `chapa merge`
 
-Fetch stats from your EMU account and upload them to Chapa.
+Link a second GitHub account (for example your EMU account) to the Chapa profile you logged in with.
 
 ```bash
 chapa merge --emu-handle your-emu-handle
 ```
 
-The EMU token can be provided via `--emu-token` flag or `GITHUB_EMU_TOKEN` environment variable.
+Give the second account's token with the `--emu-token` flag or the `GITHUB_EMU_TOKEN` environment variable.
+
+The CLI sends the handle and the token once to the Chapa server. The server checks with GitHub that the token belongs to that handle and has the required scopes. Then it stores the token encrypted and collects the account's activity every day. Your badge updates after the next collection. You do not need to run `merge` again unless the token expires or is revoked.
+
+When the link succeeds, the CLI prints:
+
+```
+Linked your-emu-handle to your-handle. Chapa will collect your-emu-handle's activity daily; your badge updates after the next collection.
+```
+
+If the second account also has its own Chapa profile, the CLI tells you. Ask support to remove that profile, so that the same work does not show on two badges.
+
+If the server refuses the token (wrong account, missing scopes, already linked to another profile), the CLI prints the reason, the required scopes and a link to [EMU token setup](#emu-token-setup). When the token is rejected, expired or revoked, create a new token and run:
+
+```bash
+npx chapa-cli@latest merge --emu-handle your-emu-handle
+```
 
 If you previously logged in against a custom server, `merge` will keep using that saved server until you override it:
 
@@ -86,23 +102,30 @@ If you previously logged in against a custom server, `merge` will keep using tha
 chapa merge --emu-handle your-emu-handle --server https://chapa.thecreativetoken.com
 ```
 
-**Required token scopes:** `repo`, `read:user`, `read:org`, `read:discussion`
-
-> Without `repo` scope, only the contribution calendar works — PRs, lines, repos contributed, and stars will all show as zero.
+**Required token scopes:** `repo`, `read:user`, `read:org`. If your organization uses SAML SSO, also authorize the token for the organization.
 
 See [EMU token setup](#emu-token-setup) for step-by-step instructions.
+
+### `chapa unlink`
+
+Remove the linked GitHub account from your Chapa profile. The server deletes the stored token and stops collecting the account's activity. Your badge updates after the next collection.
+
+```bash
+chapa unlink
+chapa unlink --json
+```
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
-| `--emu-handle <handle>` | Your EMU GitHub handle (required for merge) |
-| `--emu-token <token>` | EMU GitHub token (or set `GITHUB_EMU_TOKEN`) |
+| `--emu-handle <handle>` | GitHub handle of the account to link (required for merge) |
+| `--emu-token <token>` | GitHub token of that account (or set `GITHUB_EMU_TOKEN`). Scopes: `repo`, `read:user`, `read:org` |
 | `--handle <handle>` | Override personal handle (auto-detected from login) |
 | `--token <token>` | Override auth token (auto-detected from login) |
 | `--file <path>` | Path to Claude Code insights HTML file (required for insights) |
 | `--server <url>` | Chapa server URL. HTTPS is required except for local loopback URLs such as `http://localhost:3001`. |
-| `--verbose` | Show debug output, timings, and server responses on stderr |
+| `--verbose` | Show debug output, timings, and request status on stderr. Tokens are never printed. |
 | `--json` | Output structured results on stdout. Can be combined with `--verbose`. |
 | `--insecure` | Skip TLS certificate verification |
 | `--version`, `-v` | Show version number |
@@ -144,7 +167,6 @@ Your EMU token is a GitHub personal access token created on your **EMU (work) ac
 | `repo` | Access repository data, PR details, lines changed, commit history |
 | `read:user` | Contribution calendar, profile info |
 | `read:org` | Repos in your enterprise org |
-| `read:discussion` | Discussion contributions (future-proofing) |
 
 6. Click **Generate token** and copy it
 
@@ -157,9 +179,11 @@ Most enterprise GitHub organizations enforce SAML single sign-on. If yours does,
 3. Click **Configure SSO**
 4. Click **Authorize** next to your enterprise organization
 
-> **How to tell if SAML is blocking you:** Run `chapa merge --verbose`. If you see `saml_failure` in the error output, your token needs SSO authorization. Commits and active days will work, but PRs, lines, and reviews will show as zero.
+> If the token is not authorized for SSO, Chapa cannot read the organization's repositories, and that work does not count in your badge. Authorizing the same token later is enough; you do not need to link again.
 
-### Step 3: Store the token
+### Step 3: Link the account
+
+Chapa uses this token every day to collect the account's activity. If the token has an expiration date, link again with a new token before it expires.
 
 Either pass it directly:
 
@@ -178,57 +202,33 @@ chapa merge --emu-handle your-emu-handle
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| All metrics zero except commits | Token missing `repo` scope | Regenerate token with `repo` scope |
-| PRs/lines/reviews zero, commits work | SAML SSO not authorized | Authorize token for your org (see above) |
-| `fetch failed → ENOTFOUND` | DNS/network issue | Check internet connection or proxy settings |
-| `fetch failed → ECONNREFUSED` | GitHub API unreachable | Corporate firewall may be blocking `api.github.com` |
+| `The token needs these scopes` | Token is missing `repo`, `read:user` or `read:org` | Create a token with all three scopes and run `merge` again |
+| `GitHub rejected this token` | Token expired, revoked or mistyped | Create a new token and run `npx chapa-cli@latest merge --emu-handle <handle>` |
+| `This token belongs to a different GitHub account` | `--emu-handle` and the token do not match | Use the token of the account named in `--emu-handle` |
+| `already linked to another Chapa profile` | The account is linked to a different Chapa profile | Log in as that profile and run `chapa unlink` first |
+| `Run chapa login` | CLI login is missing or expired | Run `chapa login` |
+| `Try again` (503) | Chapa or GitHub was temporarily unavailable | Run the same command again |
+| `Server returned 410` | An old CLI version | Run `npx chapa-cli@latest merge --emu-handle <handle>` |
 | TLS certificate errors | Corporate TLS interception | Use `--insecure` flag |
-| `GraphQL HTTP 401` | Token expired or invalid | Regenerate the EMU token |
 
-Run with `--verbose` for detailed debug output including timing, server responses, and error details.
+Run with `--verbose` for debug output with timings and request status. Tokens are never printed.
 
 ## How it works
 
 1. **Login**: The CLI generates a session ID, displays an authorization URL, and polls the Chapa server until you approve in the browser. Credentials are saved to `~/.chapa/credentials.json`.
 
-2. **Merge**: The CLI fetches your EMU account's contribution data via GitHub's GraphQL API (using your EMU token), then uploads the aggregated stats to the Chapa server. Your badge will reflect the combined data on next refresh.
+2. **Merge**: The CLI sends the second account's handle and token once to the Chapa server (`POST /api/github-linked`, in the request body, authenticated with your Chapa CLI login). The server verifies that the token belongs to that account, stores it encrypted, and collects the account's activity every day as a second GitHub source of your profile. The CLI then reads the link status once and prints it.
 
-3. **Insights**: The CLI parses a Claude Code insights HTML report (exported from your browser), extracts session metrics, tool usage, and language data, then uploads it to the Chapa server to compute your Craft Score.
+3. **Unlink**: The CLI asks the Chapa server to delete the link and its stored token.
 
-## Metrics collected
+4. **Insights**: The CLI parses a Claude Code insights HTML report (exported from your browser), extracts session metrics, tool usage, and language data, then uploads it to the Chapa server to compute your Craft Score.
 
-The `merge` command fetches the following data from your EMU account via GitHub's GraphQL API, covering a rolling **365-day window**.
+## Token handling
 
-### Contribution metrics
-
-| Metric | Description |
-|--------|-------------|
-| Total commits | All contributions recorded in GitHub's contribution calendar |
-| Active days | Number of days with at least one contribution |
-| Merged PRs (count) | Pull requests that were merged |
-| Merged PRs (weight) | Complexity-weighted score based on lines changed and files touched |
-| Reviews submitted | Pull request reviews authored |
-| Issues closed | Issues contributed to |
-| Lines added | Sum of additions across merged PRs |
-| Lines deleted | Sum of deletions across merged PRs |
-
-### Repository metrics
-
-| Metric | Description |
-|--------|-------------|
-| Repos contributed to | Repositories with at least one commit in the period (top 20 by last push) |
-| Top repo share | Ratio of commits in your most-active repo vs. total — measures focus/spread |
-| Total stars | Stargazers across your owned repositories |
-| Total forks | Forks across your owned repositories |
-| Total watchers | Watchers across your owned repositories |
-
-### Activity data
-
-| Metric | Description |
-|--------|-------------|
-| Heatmap | Daily contribution count for every day in the 365-day window |
-
-All metrics are aggregated client-side and uploaded to the Chapa server in a single request. The EMU token is used only to query GitHub's API and is never stored or sent to Chapa.
+- The CLI never writes the second account's token to disk, to logs (including `--verbose` output) or to telemetry.
+- The token travels only in the JSON body of one HTTPS request to the Chapa server. It is never sent in a request header.
+- The Chapa server stores the token encrypted and uses it only to collect the linked account's activity. `chapa unlink` deletes it.
+- Revoking the token on GitHub also stops collection. Chapa then shows that the linked account needs a new token.
 
 ## Contributing
 
