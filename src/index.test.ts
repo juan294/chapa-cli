@@ -1722,7 +1722,7 @@ describe("index.ts command dispatch", () => {
     await runMain();
 
     const written = stdoutWriteSpy.mock.calls.map((c: unknown[]) => c[0]).join("");
-    expect(JSON.parse(written).recoveryCommand).toBe("npx chapa-cli@latest merge --emu-handle corp_user");
+    expect(JSON.parse(written).recoveryCommand).toBe("npx chapa-cli@latest merge --emu-handle corp_user --emu-token <token>");
     expect(mockExit).not.toHaveBeenCalled();
   });
 

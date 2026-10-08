@@ -20,7 +20,7 @@ const SERVER = "https://chapa.thecreativetoken.com";
 const CLI_TOKEN = "chapa-cli-token";
 const EMU_TOKEN = "ghp_emuSecretToken123";
 const HELP_URL = "https://github.com/juan294/chapa-cli#emu-token-setup";
-const RECOVERY = "npx chapa-cli@latest merge --emu-handle corp_user";
+const RECOVERY = "npx chapa-cli@latest merge --emu-handle corp_user --emu-token <token>";
 
 const mockFetch = vi.fn();
 
@@ -206,10 +206,44 @@ describe("chapa merge links a secondary GitHub account", () => {
     await runCli(mergeArgs(), telemetrySent);
 
     expect(allOutput()).toContain(message);
-    expect(allOutput()).toContain(HELP_URL);
-    expect(allOutput()).toContain("repo, read:user, read:org");
+    // A conflict is not a token problem: no token setup guidance.
+    expect(allOutput()).not.toContain(HELP_URL);
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the token owner the server reports, not --handle", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ ...LINKED, owner: "juan294" }))
+      .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+    await runCli(mergeArgs("--handle", "someone-else"), telemetrySent);
+
+    expect(allOutput()).toContain("Linked corp_user to juan294.");
+    expect(allOutput()).not.toContain("to someone-else");
+  });
+
+  it("404: explains that the server does not support linking yet, and exits 1", async () => {
+    mockFetch.mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain("This Chapa server does not support linking a second GitHub account yet.");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it.each([
+    [429, { error: "rate_limited", message: "Too many requests. Please try again later." }],
+    [400, { error: "invalid_body", message: "Send { login, token } with a GitHub login and a GitHub token." }],
+    [401, { error: "cli_token_required", message: "Use the Chapa CLI token from `chapa login`, not a GitHub token." }],
+    [503, { error: "github_unavailable", message: "GitHub could not verify the token. Try again later." }],
+  ])("%i: prints the server message and exits 1", async (status, body) => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(body, status));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain(body.message);
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("422: prints the message, link, scopes, missing scopes and the recovery command, and exits 1", async () => {
@@ -370,6 +404,9 @@ describe("the linked account token never leaks", () => {
       sourceHandle: "corp_user",
       stats: { commitsTotal: 0, reposContributed: 0, prsMergedCount: 0, activeDays: 0, reviewsSubmittedCount: 0 },
     }));
+    // The server's telemetry validator requires fetchMs, uploadMs and totalMs.
+    const timing = (telemetryPayloads()[0] as { timing: Record<string, unknown> }).timing;
+    expect(timing).toEqual({ fetchMs: 0, uploadMs: expect.any(Number), totalMs: expect.any(Number) });
   });
 });
 
@@ -387,6 +424,16 @@ describe("chapa unlink", () => {
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${CLI_TOKEN}`);
     expect(allOutput()).toContain("Unlinked");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("says nothing was linked when the server reports wasLinked:false", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ success: true, linked: false, owner: "juan294", wasLinked: false }));
+
+    await runCli(["unlink"], outputSeen);
+
+    expect(allOutput()).toContain("No second GitHub account was linked to juan294.");
+    expect(allOutput()).not.toContain("Unlinked");
     expect(exitSpy).not.toHaveBeenCalled();
   });
 

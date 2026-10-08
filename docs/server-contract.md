@@ -28,14 +28,15 @@ token as Bearer (a GitHub token would authenticate as its own account).
 
 | Status | Body | CLI behavior |
 |--------|------|--------------|
-| 200 | `{ linked: true, login, alsoRegistered: boolean, collection: "queued" \| "deferred" }` | Print the link message; note a duplicate profile when `alsoRegistered`; note the next daily run when `deferred`. Then read the status once. |
+| 200 | `{ linked: true, owner, login, alsoRegistered: boolean, collection: "queued" \| "deferred" }` | Print the link message, naming `owner` (the CLI token's profile); note a duplicate profile when `alsoRegistered`; note the next daily run when `deferred`. Then read the status once. |
 | 400 | `{ error: "invalid_body", message }` | Print the message. |
 | 401 | `{ error: "authentication_required" \| "cli_token_required", message }` | Print the message and tell the user to run `chapa login`. |
 | 403 | `{ error: "token_identity_mismatch", message }` | Print the message, the token setup link and the required scopes. |
-| 409 | `{ error: "linked_elsewhere" \| "same_as_owner", message }` | Print the message, the token setup link and the required scopes. |
-| 422 | `{ error: "token_rejected" \| "insufficient_scope", message, requiredScopes: ["repo","read:user","read:org"], missingScopes?: string[], helpUrl }` | Print the message, the setup link, the required and missing scopes, and the recovery command `npx chapa-cli@latest merge --emu-handle B`. |
+| 409 | `{ error: "linked_elsewhere" \| "same_as_owner", message }` | Print the message. A conflict is about the account, not the token. |
+| 422 | `{ error: "token_rejected" \| "insufficient_scope", message, requiredScopes: ["repo","read:user","read:org"], missingScopes?: string[], helpUrl }` | Print the message, the setup link, the required and missing scopes, and the recovery command `npx chapa-cli@latest merge --emu-handle B --emu-token <token>`. |
 | 429 | `{ error: "rate_limited", message }` | Print the message. |
 | 503 | `{ error: "persist_failed" \| "github_unavailable", message }` | Print the message (try again). |
+| 404 | any | The server has no link routes yet: say so. |
 | other | any | Print `message`, else `error`, else `Server returned <status>`. A 410 comes only from the legacy `POST /api/supplemental` path. |
 
 `helpUrl` is `https://github.com/juan294/chapa-cli#emu-token-setup`. Every
@@ -65,7 +66,7 @@ Empty body. Used by `chapa unlink`.
 
 | Status | Body |
 |--------|------|
-| 200 | `{ success: true, linked: false }` |
+| 200 | `{ success: true, linked: false, owner, wasLinked: boolean }`; `wasLinked: false` means nothing was linked |
 | 401 | `{ error: "authentication_required" }` |
 | 429 | `{ error: "rate_limited" }` |
 | 503 | `{ error: "persist_failed", message }` |
@@ -114,7 +115,7 @@ interface TelemetryPayload {
   timing: {
     totalMs: number;          // Total CLI operation duration
     authMs?: number;          // Login approval / polling duration
-    fetchMs?: number;         // GitHub GraphQL fetch duration (merge before 0.6.0)
+    fetchMs?: number;         // Merge sends 0 since 0.6.0 (the server requires it for merge)
     parseMs?: number;         // Insights HTML parse duration
     uploadMs?: number;        // Chapa server upload or link request duration
   };

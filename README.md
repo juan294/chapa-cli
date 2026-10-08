@@ -93,7 +93,7 @@ If the second account also has its own Chapa profile, the CLI tells you. Ask sup
 If the server refuses the token (wrong account, missing scopes, already linked to another profile), the CLI prints the reason, the required scopes and a link to [EMU token setup](#emu-token-setup). When the token is rejected, expired or revoked, create a new token and run:
 
 ```bash
-npx chapa-cli@latest merge --emu-handle your-emu-handle
+npx chapa-cli@latest merge --emu-handle your-emu-handle --emu-token <token>
 ```
 
 If you previously logged in against a custom server, `merge` will keep using that saved server until you override it:
@@ -203,12 +203,13 @@ chapa merge --emu-handle your-emu-handle
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `The token needs these scopes` | Token is missing `repo`, `read:user` or `read:org` | Create a token with all three scopes and run `merge` again |
-| `GitHub rejected this token` | Token expired, revoked or mistyped | Create a new token and run `npx chapa-cli@latest merge --emu-handle <handle>` |
+| `GitHub rejected this token` | Token expired, revoked or mistyped | Create a new token and run `npx chapa-cli@latest merge --emu-handle <handle> --emu-token <token>` |
 | `This token belongs to a different GitHub account` | `--emu-handle` and the token do not match | Use the token of the account named in `--emu-handle` |
 | `already linked to another Chapa profile` | The account is linked to a different Chapa profile | Log in as that profile and run `chapa unlink` first |
 | `Run chapa login` | CLI login is missing or expired | Run `chapa login` |
 | `Try again` (503) | Chapa or GitHub was temporarily unavailable | Run the same command again |
-| `Server returned 410` | An old CLI version | Run `npx chapa-cli@latest merge --emu-handle <handle>` |
+| `Server returned 410` | An old CLI version | Run `npx chapa-cli@latest merge --emu-handle <handle> --emu-token <token>` |
+| `This Chapa server does not support linking` | The server is older than this CLI | Try again after the server is updated |
 | TLS certificate errors | Corporate TLS interception | Use `--insecure` flag |
 
 Run with `--verbose` for debug output with timings and request status. Tokens are never printed.

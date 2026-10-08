@@ -368,12 +368,13 @@ async function handleInsights(
 
 /** The command that replaces a revoked, expired or under-scoped token. */
 function recoveryCommand(login: string): string {
-  return `npx chapa-cli@latest merge --emu-handle ${login}`;
+  return `npx chapa-cli@latest merge --emu-handle ${login} --emu-token <token>`;
 }
 
-/** Token setup help for answers about the linked account's token (403, 409, 422). */
+/** Token setup help for answers about the linked account's token (403, 422).
+ * A 409 conflict is about the account, not the token. */
 function tokenGuidance(failure: ServerFailure) {
-  if (failure.status !== 403 && failure.status !== 409 && failure.status !== 422) return undefined;
+  if (failure.status !== 403 && failure.status !== 422) return undefined;
   return {
     requiredScopes: [...LINKED_GITHUB_REQUIRED_SCOPES],
     ...(failure.missingScopes?.length && { missingScopes: failure.missingScopes }),
@@ -451,7 +452,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
   const server = { serverUrl, authToken, insecure: args.insecure, logger: log };
 
   try {
-    log.info(`Linking GitHub account ${emuHandle} to ${handle} on ${serverUrl}...`);
+    log.info(`Linking GitHub account ${emuHandle} on ${serverUrl}...`);
     log.time("upload");
     const result = await linkGitHubAccount({ ...server, login: emuHandle, githubToken: emuToken });
     uploadMs = log.timeEnd("upload");
@@ -502,7 +503,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
       }, null, 2) + "\n");
     } else {
       log.info(
-        `Linked ${result.login} to ${handle}. Chapa will collect ${result.login}'s activity daily; your badge updates after the next collection.`,
+        `Linked ${result.login} to ${result.owner ?? handle}. Chapa will collect ${result.login}'s activity daily; your badge updates after the next collection.`,
       );
       if (result.collection === "deferred") {
         log.info("Collection will start with the next daily run.");
@@ -529,7 +530,10 @@ async function handleMerge(args: CliArgs): Promise<void> {
       success: mergeSucceeded,
       errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
       stats: EMPTY_TELEMETRY_STATS,
+      // The server's telemetry contract requires fetchMs; merge fetches
+      // nothing from GitHub itself any more.
       timing: {
+        fetchMs: 0,
         uploadMs: round(uploadMs),
         totalMs: round(totalMs || log.timeEnd("total")),
       },
@@ -560,7 +564,7 @@ async function handleUnlink(args: CliArgs): Promise<void> {
 
   if (args.json) {
     process.stdout.write(JSON.stringify(result.ok
-      ? { success: true, handle, linked: false, cliVersion: VERSION }
+      ? { success: true, handle: result.owner ?? handle, linked: false, wasLinked: result.wasLinked, cliVersion: VERSION }
       : {
         success: false,
         handle,
@@ -579,7 +583,10 @@ async function handleUnlink(args: CliArgs): Promise<void> {
   }
 
   if (!args.json) {
-    log.info(`Unlinked the second GitHub account${handle ? ` from ${handle}` : ""}. Chapa removed its token and stopped collecting its activity.`);
+    const owner = result.owner ?? handle;
+    log.info(result.wasLinked !== false
+      ? `Unlinked the second GitHub account${owner ? ` from ${owner}` : ""}. Chapa removed its token and stopped collecting its activity.`
+      : `No second GitHub account was linked${owner ? ` to ${owner}` : ""}.`);
   }
 }
 

@@ -41,7 +41,7 @@ export interface ServerFailure {
 }
 
 export type LinkResult =
-  | { ok: true; login: string; alsoRegistered: boolean; collection: "queued" | "deferred" }
+  | { ok: true; owner?: string; login: string; alsoRegistered: boolean; collection: "queued" | "deferred" }
   | ServerFailure;
 
 export type LinkState =
@@ -50,11 +50,17 @@ export type LinkState =
 
 export type LinkStatusResult = { ok: true; link: LinkState } | ServerFailure;
 
-export type UnlinkResult = { ok: true } | ServerFailure;
+export type UnlinkResult = { ok: true; owner?: string; wasLinked: boolean } | ServerFailure;
 
 type JsonObject = Record<string, unknown>;
 
 const UNEXPECTED_RESPONSE = "Unexpected response from the server";
+const LINKING_UNSUPPORTED = "This Chapa server does not support linking a second GitHub account yet. Try again after it is updated.";
+
+/** An older server has no link routes; say so instead of a bare 404. */
+function unsupportedOn404(failure: ServerFailure): ServerFailure {
+  return failure.status === 404 ? { ...failure, message: LINKING_UNSUPPORTED } : failure;
+}
 
 function asObject(value: unknown): JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -122,14 +128,15 @@ export async function linkGitHubAccount(opts: LinkOptions): Promise<LinkResult> 
     login: opts.login,
     token: opts.githubToken,
   });
-  if (!res.ok) return res;
+  if (!res.ok) return unsupportedOn404(res);
 
-  const { linked, login, alsoRegistered, collection } = res.data;
+  const { linked, owner, login, alsoRegistered, collection } = res.data;
   if (linked !== true || typeof login !== "string") {
     return { ok: false, status: res.status, message: UNEXPECTED_RESPONSE };
   }
   return {
     ok: true,
+    ...(typeof owner === "string" && { owner }),
     login,
     alsoRegistered: alsoRegistered === true,
     collection: collection === "deferred" ? "deferred" : "queued",
@@ -160,9 +167,10 @@ export async function readGitHubLinkStatus(opts: ServerOptions): Promise<LinkSta
 /** Remove the linked secondary GitHub account and its stored token. */
 export async function unlinkGitHubAccount(opts: ServerOptions): Promise<UnlinkResult> {
   const res = await callServer(opts, "/api/github-linked/disconnect", "POST");
-  if (!res.ok) return res;
+  if (!res.ok) return unsupportedOn404(res);
 
-  return res.data.linked === false
-    ? { ok: true }
+  const { linked, owner, wasLinked } = res.data;
+  return linked === false
+    ? { ok: true, ...(typeof owner === "string" && { owner }), wasLinked: wasLinked !== false }
     : { ok: false, status: res.status, message: UNEXPECTED_RESPONSE };
 }

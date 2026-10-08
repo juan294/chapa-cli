@@ -294,7 +294,7 @@ describe("unlinkGitHubAccount", () => {
 
     const result = await unlinkGitHubAccount({ serverUrl: SERVER, authToken: CLI_TOKEN });
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, wasLinked: true });
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toBe(`${SERVER}/api/github-linked/disconnect`);
     expect(init.method).toBe("POST");

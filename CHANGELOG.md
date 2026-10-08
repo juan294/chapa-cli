@@ -22,8 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `chapa merge --json` output describes the link (`linked`,
   `alsoRegistered`, `collection`, `linkStatus`) instead of uploaded stats.
   Failures include the HTTP `status` and the server error `code`
-- Merge telemetry keeps `command: "merge"` with zero stats; it never
-  contains the token
+- Merge telemetry keeps `command: "merge"` with zero stats and
+  `fetchMs: 0`; it never contains the token
+- The recovery command includes `--emu-token <token>`, the link message
+  names the profile the server linked to, `chapa unlink` says when nothing
+  was linked, and a server without the link routes is reported as such
 
 ### Added
 
