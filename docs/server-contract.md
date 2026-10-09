@@ -1,4 +1,83 @@
-# Server Contract: `POST /api/telemetry`
+# Server Contract
+
+This document describes the Chapa server endpoints that the CLI calls for
+linked GitHub accounts (`merge`, `unlink`) and for telemetry.
+
+# Linked GitHub account (juan294/chapa#1401)
+
+`chapa merge` links a second GitHub account B (for example an EMU account) to
+the Chapa profile of the logged-in user. The server verifies that B's token
+belongs to B, stores it encrypted, and collects B's activity daily.
+
+All three endpoints use `Authorization: Bearer <Chapa CLI token>`, the token
+that `chapa login` saves. B's GitHub token is never sent in a header; it
+travels only in the JSON body of `POST /api/github-linked`.
+
+## `POST /api/github-linked`
+
+```
+POST /api/github-linked
+Authorization: Bearer <Chapa CLI token>
+Content-Type: application/json
+
+{ "login": "<B's GitHub handle>", "token": "<B's GitHub token>" }
+```
+
+The body has exactly these two keys. The server accepts only a Chapa CLI
+token as Bearer (a GitHub token would authenticate as its own account).
+
+| Status | Body | CLI behavior |
+|--------|------|--------------|
+| 200 | `{ linked: true, owner, login, alsoRegistered: boolean, collection: "queued" \| "deferred" }` | Print the link message, naming `owner` (the CLI token's profile); note a duplicate profile when `alsoRegistered`; note the next daily run when `deferred`. Then read the status once. |
+| 400 | `{ error: "invalid_body", message }` | Print the message. |
+| 401 | `{ error: "authentication_required" \| "cli_token_required", message }` | Print the message and tell the user to run `chapa login`. |
+| 403 | `{ error: "token_identity_mismatch", message }` | Print the message, the token setup link and the required scopes. |
+| 409 | `{ error: "linked_elsewhere" \| "same_as_owner", message }` | Print the message. A conflict is about the account, not the token. |
+| 422 | `{ error: "token_rejected" \| "insufficient_scope", message, requiredScopes: ["repo","read:user","read:org"], missingScopes?: string[], helpUrl }` | Print the message, the setup link, the required and missing scopes, and the recovery command `npx chapa-cli@latest merge --emu-handle B --emu-token <token>`. |
+| 429 | `{ error: "rate_limited", message }` | Print the message. |
+| 503 | `{ error: "persist_failed" \| "github_unavailable", message }` | Print the message (try again). |
+| 404 | any | The server has no link routes yet: say so. |
+| other | any | Print `message`, else `error`, else `Server returned <status>`. A 410 comes only from the legacy `POST /api/supplemental` path. |
+
+`helpUrl` is `https://github.com/juan294/chapa-cli#emu-token-setup`. Every
+non-2xx answer makes the CLI exit with code 1.
+
+## `GET /api/github-linked/status`
+
+```
+GET /api/github-linked/status
+Authorization: Bearer <Chapa CLI token>
+```
+
+Answers `{ linked: false }` or
+`{ linked: true, login, needsReconnect: boolean, connectedAt }`.
+`chapa merge` reads it once after a successful link. When `needsReconnect` is
+true it prints the recovery command. A failed status read does not fail the
+command; it is reported in `--verbose` output.
+
+## `POST /api/github-linked/disconnect`
+
+```
+POST /api/github-linked/disconnect
+Authorization: Bearer <Chapa CLI token>
+```
+
+Empty body. Used by `chapa unlink`.
+
+| Status | Body |
+|--------|------|
+| 200 | `{ success: true, linked: false, owner, wasLinked: boolean }`; `wasLinked: false` means nothing was linked |
+| 401 | `{ error: "authentication_required" }` |
+| 429 | `{ error: "rate_limited" }` |
+| 503 | `{ error: "persist_failed", message }` |
+
+## Token handling
+
+- B's token is never written to `~/.chapa/credentials.json`, to logger output
+  (including `--verbose`) or to telemetry.
+- It is never sent in a request header.
+
+# Telemetry: `POST /api/telemetry`
 
 The CLI sends telemetry after `login`, `merge`, and `insights` operations.
 The Chapa server stores this data for debugging and operational dashboarding.
@@ -23,24 +102,24 @@ interface TelemetryPayload {
   command: TelemetryCommand;
   stage: TelemetryStage;
   targetHandle?: string;      // Personal GitHub handle when known
-  sourceHandle?: string;      // EMU handle for merge, personal handle for insights
+  sourceHandle?: string;      // Linked account handle for merge, personal handle for insights
   success: boolean;
   errorCategory?: "auth" | "network" | "graphql" | "server" | "unknown";
   stats: {
-    commitsTotal: number;     // Merge-only metric; zero for login
-    reposContributed: number; // Merge-only metric; zero for login
-    prsMergedCount: number;   // Merge-only metric; zero for login
-    activeDays: number;       // Used by merge and insights
+    commitsTotal: number;     // Zero (merge links an account since 0.6.0)
+    reposContributed: number; // Zero
+    prsMergedCount: number;   // Zero
+    activeDays: number;       // Insights report days; zero for login and merge
     reviewsSubmittedCount: number;
   };
   timing: {
     totalMs: number;          // Total CLI operation duration
     authMs?: number;          // Login approval / polling duration
-    fetchMs?: number;         // GitHub GraphQL fetch duration
+    fetchMs?: number;         // Merge sends 0 since 0.6.0 (the server requires it for merge)
     parseMs?: number;         // Insights HTML parse duration
-    uploadMs?: number;        // Chapa server upload duration
+    uploadMs?: number;        // Chapa server upload or link request duration
   };
-  cliVersion: string;         // e.g. "0.4.0"
+  cliVersion: string;         // e.g. "0.6.0"
 }
 ```
 

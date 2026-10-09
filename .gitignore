@@ -5,10 +5,16 @@ coverage/
 .DS_Store
 .env
 .env.local
-.claude/
+.claude/*
+!.claude/commands/
+!.claude/hooks/
+!.claude/rules/
+!.claude/skills/
+.claude/skills/drawio/
 .vscode/
 CLAUDE.local.md
 .worktrees/
+.rpi/local/
 .summon
 docs/agents/
 logs/

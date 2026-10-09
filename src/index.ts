@@ -6,6 +6,14 @@ import type { Logger } from "./logger.js";
 import type { InsightsUpload } from "./shared.js";
 import { queueTelemetry, classifyError, EMPTY_TELEMETRY_STATS } from "./telemetry.js";
 import type { TelemetryPayload } from "./telemetry.js";
+import {
+  LINKED_GITHUB_REQUIRED_SCOPES,
+  LINKED_GITHUB_TOKEN_HELP_URL,
+  linkGitHubAccount,
+  readGitHubLinkStatus,
+  unlinkGitHubAccount,
+} from "./upload.js";
+import type { ServerFailure } from "./upload.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -16,17 +24,19 @@ const VERSION = typeof __CLI_VERSION__ !== "undefined" ? __CLI_VERSION__ : "0.0.
 
 const HELP_TEXT = `chapa-cli v${VERSION}
 
-Merge GitHub EMU (Enterprise Managed User) contributions into your Chapa badge.
+Link a second GitHub account (for example an EMU work account) to your Chapa badge.
 
 Commands:
   chapa login                          Authenticate with Chapa (opens browser)
   chapa logout                         Clear stored credentials
-  chapa merge --emu-handle <emu>       Merge EMU stats into your badge
+  chapa merge --emu-handle <emu>       Link a second GitHub account; Chapa collects its activity daily
+  chapa unlink                         Remove the linked GitHub account and its stored token
   chapa insights --file <path>         Upload Claude Code insights report
 
 Options:
-  --emu-handle <handle>   Your EMU GitHub handle (required for merge)
-  --emu-token <token>     EMU GitHub token (or set GITHUB_EMU_TOKEN)
+  --emu-handle <handle>   GitHub handle of the account to link (required for merge)
+  --emu-token <token>     GitHub token of that account (or set GITHUB_EMU_TOKEN)
+                          Required scopes: repo, read:user, read:org
   --handle <handle>       Override personal handle (auto-detected from login)
   --token <token>         Override auth token (auto-detected from login)
   --file <path>           Path to Claude Code insights HTML file (required for insights)
@@ -356,6 +366,44 @@ async function handleInsights(
   }
 }
 
+/** The command that replaces a revoked, expired or under-scoped token. */
+function recoveryCommand(login: string): string {
+  return `npx chapa-cli@latest merge --emu-handle ${login} --emu-token <token>`;
+}
+
+/** Token setup help for answers about the linked account's token (403, 422).
+ * A 409 conflict is about the account, not the token. */
+function tokenGuidance(failure: ServerFailure) {
+  if (failure.status !== 403 && failure.status !== 422) return undefined;
+  return {
+    requiredScopes: [...LINKED_GITHUB_REQUIRED_SCOPES],
+    ...(failure.missingScopes?.length && { missingScopes: failure.missingScopes }),
+    helpUrl: failure.helpUrl ?? LINKED_GITHUB_TOKEN_HELP_URL,
+  };
+}
+
+/** A rejected or under-scoped token (422) is fixed by re-running merge with a new token. */
+function failureRecovery(failure: ServerFailure, emuHandle?: string): string | undefined {
+  return failure.status === 422 && emuHandle ? recoveryCommand(emuHandle) : undefined;
+}
+
+/** Human-readable lines for a failed link or unlink call. */
+function describeServerFailure(failure: ServerFailure, emuHandle?: string): string[] {
+  const lines = [`Error: ${failure.message}`];
+  if (failure.status === 401 && !failure.message.includes("chapa login")) {
+    lines.push("Run 'chapa login' and try again.");
+  }
+  const guidance = tokenGuidance(failure);
+  if (guidance) {
+    lines.push(`Token setup: ${guidance.helpUrl}`);
+    lines.push(`Required scopes: ${guidance.requiredScopes.join(", ")}`);
+    if (guidance.missingScopes) lines.push(`Missing scopes: ${guidance.missingScopes.join(", ")}`);
+  }
+  const recovery = failureRecovery(failure, emuHandle);
+  if (recovery) lines.push(`Then run: ${recovery}`);
+  return lines;
+}
+
 async function handleMerge(args: CliArgs): Promise<void> {
   const log = createLogger({ verbose: args.verbose, json: args.json });
   log.time("total");
@@ -369,13 +417,10 @@ async function handleMerge(args: CliArgs): Promise<void> {
   const serverUrl = resolveServerUrl(args, config?.server);
   assertTrustedServerOrThrow(log, serverUrl);
   const operationId = randomUUID();
-  let fetchMs = 0;
   let uploadMs = 0;
   let totalMs = 0;
-  let telemetryStage: TelemetryPayload["stage"] = "fetch";
-  let telemetryStats = { ...EMPTY_TELEMETRY_STATS };
+  let telemetryStage: TelemetryPayload["stage"] = "upload";
   let telemetryErrorCategory: TelemetryPayload["errorCategory"] | undefined;
-  let shouldSendTelemetry = false;
   let mergeSucceeded = false;
   let caught: unknown;
 
@@ -389,7 +434,8 @@ async function handleMerge(args: CliArgs): Promise<void> {
     throw new CliError("No personal handle found");
   }
 
-  // Resolve tokens — CLI config token takes priority over GITHUB_TOKEN for auth
+  // The linked account's token: flag, then GITHUB_EMU_TOKEN. It goes only
+  // into the JSON body of the link request (never config, logs or telemetry).
   const { resolveToken } = await import("./auth.js");
   const emuToken = resolveToken(args.emuToken, "GITHUB_EMU_TOKEN");
   if (!emuToken) {
@@ -403,108 +449,76 @@ async function handleMerge(args: CliArgs): Promise<void> {
     throw new CliError("Not authenticated");
   }
 
-  const { fetchEmuStats } = await import("./fetch-emu.js");
-  const { uploadSupplementalStats } = await import("./upload.js");
-  const { formatStatsSummary } = await import("./shared.js");
+  const server = { serverUrl, authToken, insecure: args.insecure, logger: log };
 
   try {
-    log.info(`Fetching stats for EMU account: ${emuHandle}...`);
-    log.time("fetch");
-    const fetchResult = await fetchEmuStats(emuHandle, emuToken, { logger: log });
-    fetchMs = log.timeEnd("fetch");
-
-    if (!fetchResult.ok) {
-      telemetryErrorCategory = fetchResult.errorCategory;
-      shouldSendTelemetry = true;
-      totalMs = log.timeEnd("total");
-
-      if (args.json) {
-        process.stdout.write(JSON.stringify({
-          success: false,
-          targetHandle: handle,
-          sourceHandle: emuHandle,
-          error: fetchResult.error,
-          timing: { fetchMs: round(fetchMs), uploadMs: 0, totalMs: round(totalMs) },
-          cliVersion: VERSION,
-        }, null, 2) + "\n");
-      }
-
-      throw new CliError(fetchResult.error);
-    }
-
-    const emuStats = fetchResult.stats;
-    telemetryStats = mergeTelemetryStats(emuStats);
-    log.info(formatStatsSummary(emuStats));
-
-    log.info(`Uploading supplemental stats to ${serverUrl}...`);
-    telemetryStage = "upload";
+    log.info(`Linking GitHub account ${emuHandle} on ${serverUrl}...`);
     log.time("upload");
-    const result = await uploadSupplementalStats({
-      targetHandle: handle,
-      sourceHandle: emuHandle,
-      stats: emuStats,
-      token: authToken,
-      serverUrl,
-      logger: log,
-      insecure: args.insecure,
-    });
+    const result = await linkGitHubAccount({ ...server, login: emuHandle, githubToken: emuToken });
     uploadMs = log.timeEnd("upload");
 
-    if (!result.success) {
-      telemetryErrorCategory = classifyError(result.error ?? "unknown");
-      shouldSendTelemetry = true;
+    if (!result.ok) {
+      telemetryErrorCategory = classifyError(`Server returned ${result.status ?? "unknown"}: ${result.message}`);
       totalMs = log.timeEnd("total");
-
       if (args.json) {
         process.stdout.write(JSON.stringify({
           success: false,
           targetHandle: handle,
           sourceHandle: emuHandle,
-          error: result.error,
-          timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+          ...(result.status !== undefined && { status: result.status }),
+          ...(result.code !== undefined && { code: result.code }),
+          error: result.message,
+          ...tokenGuidance(result),
+          recoveryCommand: failureRecovery(result, emuHandle),
+          timing: { uploadMs: round(uploadMs), totalMs: round(totalMs) },
           cliVersion: VERSION,
         }, null, 2) + "\n");
       } else {
-        log.error(`Error: ${result.error}`);
+        for (const line of describeServerFailure(result, emuHandle)) log.error(line);
       }
-
-      throw new CliError(result.error ?? "Upload failed");
+      throw new CliError(result.message);
     }
 
-    totalMs = log.timeEnd("total");
     mergeSucceeded = true;
     telemetryStage = "complete";
-    shouldSendTelemetry = true;
+    const status = await readGitHubLinkStatus(server);
+    if (!status.ok) {
+      log.debug(`Link status check failed: ${status.message}`);
+    }
+    const needsReconnect = status.ok && status.link.linked && status.link.needsReconnect;
+    totalMs = log.timeEnd("total");
 
     if (args.json) {
       process.stdout.write(JSON.stringify({
         success: true,
         targetHandle: handle,
-        sourceHandle: emuHandle,
-        stats: {
-          commitsTotal: emuStats.commitsTotal,
-          activeDays: emuStats.activeDays,
-          prsMergedCount: emuStats.prsMergedCount,
-          prsMergedWeight: emuStats.prsMergedWeight,
-          reviewsSubmittedCount: emuStats.reviewsSubmittedCount,
-          issuesClosedCount: emuStats.issuesClosedCount,
-          linesAdded: emuStats.linesAdded,
-          linesDeleted: emuStats.linesDeleted,
-          reposContributed: emuStats.reposContributed,
-          totalStars: emuStats.totalStars,
-          totalForks: emuStats.totalForks,
-        },
-        timing: { fetchMs: round(fetchMs), uploadMs: round(uploadMs), totalMs: round(totalMs) },
+        sourceHandle: result.login,
+        linked: true,
+        alsoRegistered: result.alsoRegistered,
+        collection: result.collection,
+        linkStatus: status.ok ? status.link : null,
+        ...(needsReconnect && { recoveryCommand: recoveryCommand(result.login) }),
+        timing: { uploadMs: round(uploadMs), totalMs: round(totalMs) },
         cliVersion: VERSION,
       }, null, 2) + "\n");
     } else {
-      log.info(`Success! Stats merged for ${emuHandle} -> ${handle} (${(totalMs / 1000).toFixed(1)}s)`);
+      log.info(
+        `Linked ${result.login} to ${result.owner ?? handle}. Chapa will collect ${result.login}'s activity daily; your badge updates after the next collection.`,
+      );
+      if (result.collection === "deferred") {
+        log.info("Collection will start with the next daily run.");
+      }
+      if (result.alsoRegistered) {
+        log.info(`${result.login} also has its own Chapa profile; ask support to remove it to avoid a duplicate.`);
+      }
+      if (needsReconnect) {
+        log.warn(`${result.login} needs a new token. Run: ${recoveryCommand(result.login)}`);
+      }
     }
   } catch (err) {
     caught = err;
-    if (!shouldSendTelemetry) {
-      telemetryErrorCategory = classifyError(err instanceof Error ? err.message : String(err));
-      shouldSendTelemetry = true;
+    if (!telemetryErrorCategory) {
+      telemetryErrorCategory = classifyError(errorMessage(err));
     }
   } finally {
     emitTelemetry(serverUrl, {
@@ -515,9 +529,11 @@ async function handleMerge(args: CliArgs): Promise<void> {
       sourceHandle: emuHandle,
       success: mergeSucceeded,
       errorCategory: mergeSucceeded ? undefined : telemetryErrorCategory,
-      stats: telemetryStats,
+      stats: EMPTY_TELEMETRY_STATS,
+      // The server's telemetry contract requires fetchMs; merge fetches
+      // nothing from GitHub itself any more.
       timing: {
-        fetchMs: round(fetchMs),
+        fetchMs: 0,
         uploadMs: round(uploadMs),
         totalMs: round(totalMs || log.timeEnd("total")),
       },
@@ -530,20 +546,48 @@ async function handleMerge(args: CliArgs): Promise<void> {
   }
 }
 
-function mergeTelemetryStats(stats: {
-  commitsTotal: number;
-  reposContributed: number;
-  prsMergedCount: number;
-  activeDays: number;
-  reviewsSubmittedCount: number;
-}) {
-  return {
-    commitsTotal: stats.commitsTotal,
-    reposContributed: stats.reposContributed,
-    prsMergedCount: stats.prsMergedCount,
-    activeDays: stats.activeDays,
-    reviewsSubmittedCount: stats.reviewsSubmittedCount,
-  };
+async function handleUnlink(args: CliArgs): Promise<void> {
+  const log = createLogger({ verbose: args.verbose, json: args.json });
+  const config = loadSavedConfigOrThrow(log);
+  warnIfUsingSavedServer(log, args, config?.server);
+  const handle = args.handle ?? config?.handle;
+  const serverUrl = resolveServerUrl(args, config?.server);
+  assertTrustedServerOrThrow(log, serverUrl);
+
+  const authToken = args.token ?? config?.token;
+  if (!authToken) {
+    log.error("Error: Not authenticated. Run 'chapa login' first, or pass --token.");
+    throw new CliError("Not authenticated");
+  }
+
+  const result = await unlinkGitHubAccount({ serverUrl, authToken, insecure: args.insecure, logger: log });
+
+  if (args.json) {
+    process.stdout.write(JSON.stringify(result.ok
+      ? { success: true, handle: result.owner ?? handle, linked: false, wasLinked: result.wasLinked, cliVersion: VERSION }
+      : {
+        success: false,
+        handle,
+        ...(result.status !== undefined && { status: result.status }),
+        ...(result.code !== undefined && { code: result.code }),
+        error: result.message,
+        cliVersion: VERSION,
+      }, null, 2) + "\n");
+  }
+
+  if (!result.ok) {
+    if (!args.json) {
+      for (const line of describeServerFailure(result)) log.error(line);
+    }
+    throw new CliError(result.message);
+  }
+
+  if (!args.json) {
+    const owner = result.owner ?? handle;
+    log.info(result.wasLinked !== false
+      ? `Unlinked the second GitHub account${owner ? ` from ${owner}` : ""}. Chapa removed its token and stopped collecting its activity.`
+      : `No second GitHub account was linked${owner ? ` to ${owner}` : ""}.`);
+  }
 }
 
 function emitTelemetry(serverUrl: string, payload: TelemetryPayload, opts?: { insecure?: boolean }): void {
@@ -567,14 +611,13 @@ async function main(): Promise<void> {
 
   if (args.unknownCommand) {
     console.error(`Error: Unknown command '${args.unknownCommand}'.`);
-    console.error("Usage: chapa <login | logout | merge | insights> [options]");
+    console.error("Usage: chapa <login | logout | merge | unlink | insights> [options]");
     console.error("\nRun 'chapa --help' for more information.");
     throw new CliError(`Unknown command '${args.unknownCommand}'`);
   }
 
   if (args.insecure) {
     console.warn("\n⚠ TLS certificate verification disabled for the Chapa server (--insecure).");
-    console.warn("  GitHub API calls still validate TLS.");
     console.warn("  Use only on corporate networks with TLS interception.\n");
   }
 
@@ -604,8 +647,13 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.command === "unlink") {
+    await handleUnlink(args);
+    return;
+  }
+
   // Unknown or missing command
-  console.error("Usage: chapa <login | logout | merge | insights> [options]");
+  console.error("Usage: chapa <login | logout | merge | unlink | insights> [options]");
   console.error("\nRun 'chapa --help' for more information.");
   throw new CliError("Unknown command");
 }

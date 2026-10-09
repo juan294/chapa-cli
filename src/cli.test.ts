@@ -143,4 +143,11 @@ describe("parseArgs", () => {
   it("throws on unknown flags", () => {
     expect(() => parseArgs(["merge", "--bogus"])).toThrow();
   });
+
+  it("parses the unlink command", () => {
+    const args = parseArgs(["unlink", "--json"]);
+    expect(args.command).toBe("unlink");
+    expect(args.unknownCommand).toBeNull();
+    expect(args.json).toBe(true);
+  });
 });

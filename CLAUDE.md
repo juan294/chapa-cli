@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-chapa-cli is an open-source CLI tool that merges GitHub Enterprise Managed User (EMU) contributions into [Chapa](https://chapa.thecreativetoken.com) developer impact badges. It connects to the Chapa server via HTTP and uses GitHub's GraphQL API to fetch EMU contribution data.
+chapa-cli is an open-source CLI tool that links a second GitHub account (for example an Enterprise Managed User (EMU) account) to a [Chapa](https://chapa.thecreativetoken.com) developer impact badge. It connects to the Chapa server via HTTP; the server verifies the linked account's token and collects its activity daily.
 
 ## Architecture
 
@@ -11,10 +11,9 @@ src/
 ├── index.ts       # CLI entry point, command dispatch, error boundary
 ├── cli.ts         # Argument parsing (Node parseArgs, strict mode)
 ├── http.ts        # Shared HTTP transport, timeouts, and request normalization
-├── shared.ts      # Types, GraphQL query, stats aggregation, shared utilities
+├── shared.ts      # URL and error-chain utilities, insights payload type
 ├── login.ts       # OAuth device flow (browser auto-open)
-├── fetch-emu.ts   # GitHub GraphQL integration
-├── upload.ts      # Chapa server upload (merge stats)
+├── upload.ts      # Linked GitHub account API (merge link, status, unlink)
 ├── insights.ts    # Lazy-loaded Claude Code HTML parsing + upload
 ├── config.ts      # Credential storage (~/.chapa/credentials.json)
 ├── auth.ts        # Token resolution
@@ -22,13 +21,13 @@ src/
 └── logger.ts      # Structured logging (verbose/JSON modes)
 ```
 
-`index.ts` eagerly loads the core merge/login path and lazy-loads
+`index.ts` eagerly loads the core merge/unlink/login path and lazy-loads
 `insights.ts` only when the `insights` command runs. `http.ts`
 centralizes timeout handling, auth/header wiring, and response
-normalization for GitHub fetches, Chapa uploads, login polling,
+normalization for the linked-account calls, login polling,
 insights upload/recalculate, and telemetry.
 
-Six API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, stats upload, insights upload, badge recalculate, and telemetry.
+Eight API endpoints connect the CLI to the Chapa server: device flow auth, token exchange poll, link a GitHub account, link status, unlink, insights upload, badge recalculate, and telemetry. See `docs/server-contract.md`.
 
 ## Tech Stack
 
@@ -40,13 +39,14 @@ Six API endpoints connect the CLI to the Chapa server: device flow auth, token e
 
 ## Branching Strategy
 
-- `develop` — default working branch; all feature branches merge here
-- `main` — release branch; GitHub Releases created from `main` publish to npm automatically via OIDC trusted publishing, with manual `npm publish --otp=<code>` only as a fallback
+- `develop` — default working branch; feature PRs merge here with squash
+- `main` — release branch; `develop` → `main` release PRs use a merge commit, and GitHub Releases created from `main` publish to npm automatically via OIDC trusted publishing, with manual `npm publish --otp=<code>` only as a fallback
 
 ## Deployment
 
-- Production deploys from `main` only. Changes pushed to `develop` must be merged to `main` via PR before they go live.
+- Production deploys from `main` only. Changes pushed to `develop` must be merged to `main` with a merge-commit PR before they go live.
 - Always confirm the target branch before pushing — if the goal is production deployment, ensure the PR targets `main`.
+- Never squash a release PR. A squash discards the shared ancestry between `develop` and `main`, which makes later release PRs depend on manual back-merges. A merge commit keeps the last promoted `develop` commit in `main`'s ancestry. Feature PRs into `develop` may still squash.
 
 ## Commit Conventions
 
@@ -67,7 +67,7 @@ docs: description
 2. Make changes, write/update tests
 3. Open a PR targeting `develop`
 4. CI must pass (test + typecheck + build across Node 20/22/24)
-5. Merge to `develop`; when ready to release, merge `develop` → `main`
+5. Squash-merge the feature PR to `develop`; when ready to release, merge `develop` → `main` with a merge commit
 
 ## Testing & CI
 
@@ -88,7 +88,7 @@ Run verification sequentially with `;` or `&&`, never as parallel Bash calls.
 ## Release Process
 
 1. Bump `version` in `package.json` on `develop`
-2. Merge `develop` → `main` via PR
+2. Merge `develop` → `main` via PR with a merge commit; never squash the release PR
 3. Create a GitHub Release from a tag/commit on `main` — the `publish.yml` workflow hard-fails unless the release targets `main` and the tagged commit is reachable from `origin/main`, then publishes to npm automatically
 4. If automated publish fails (strict 2FA), publish manually: `npm publish --otp=<code>`
 
@@ -109,7 +109,7 @@ publishing with an opaque 401 until `npm trust github chapa-cli` is re-run.
 ## Security Considerations
 
 - Never commit tokens or credentials
-- EMU tokens are passed via CLI flags or environment variables, never stored
+- EMU (linked account) tokens are passed via CLI flags or environment variables and never stored locally, logged or put in telemetry. They are sent once, only in the JSON body of `POST /api/github-linked` (never in a header); the Chapa server stores them encrypted
 - Personal auth tokens are stored in `~/.chapa/credentials.json` with user-only permissions
 - The `--insecure` flag exists for corporate TLS interception but should not be used outside that context
 
@@ -146,10 +146,10 @@ claude -p "Read issue #240 and implement the fix with TDD" --allowedTools "Edit,
 
 This project follows Research-Plan-Implement (RPI).
 
-1. /research -- Understand the codebase as-is
-2. /plan -- Create a phased implementation spec
-3. /implement -- Execute one phase at a time with review gates
-4. /validate -- Verify implementation against the plan
+1. /rpi-research -- Understand the codebase as-is
+2. /rpi-plan -- Create a phased implementation spec
+3. /rpi-implement -- Execute one phase at a time with review gates
+4. /rpi-validate -- Verify implementation against the plan
 
 Each phase is its own conversation. STOP after each phase.
 Use /clear between tasks, /compact when context is heavy.
@@ -195,7 +195,8 @@ cd /Users/dev/project && pnpm run test
 </example>
 </examples>
 
-Rules load from `.claude/rules/` and `.claude/skills/` automatically.
+RPI workflows load from `.claude/skills/`; shared conditional rules are mapped
+from `.rpi/rules/` through `AGENTS.md`.
 
 ## TDD Protocol
 
@@ -224,3 +225,6 @@ Go directly to these paths -- never search the codebase for them.
 | PR descriptions | `docs/prs/{number}_description.md` | |
 | Research docs | `docs/research/YYYY-MM-DD-description.md` | |
 | Plans | `docs/plans/YYYY-MM-DD-description.md` | Phase files in `-phases/phase-N.md` |
+<!-- rpi:claude-import:start -->
+@AGENTS.md
+<!-- rpi:claude-import:end -->

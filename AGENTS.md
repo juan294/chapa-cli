@@ -5,36 +5,37 @@
 This project follows the cc-rpi methodology and is configured to work
 with both Claude Code and Codex / GPT-5.x.
 
-When operating in Codex, treat these files as the source of truth:
+Treat these files as the source of truth:
 
-- `CLAUDE.md` -- project overview, workflow, commands, git/deploy context
-- `.claude/commands/*.md` -- workflow definitions for `/research`, `/plan`,
-  `/implement`, `/validate`, `/pre-launch`, `/update-docs`, `/release`,
-  and related commands
-- `.claude/rules/*.md` -- reusable rules and path-scoped constraints
-- `.claude/skills/*/SKILL.md` -- on-demand skills and domain procedures
+- `AGENTS.md` -- shared project instructions and managed RPI policy
+- `CLAUDE.md` -- project facts imported by Claude Code through this file
+- `.agents/skills/*/SKILL.md` -- Codex workflow and domain packages
+- `.claude/skills/*/SKILL.md` -- Claude Code workflow and domain packages
+- `.rpi/rules/*.md` -- shared conditional rules
 
 If the user says "make this Codex compatible", ensure this file exists
 and is kept in sync with the compatibility conventions below.
 
 ## Command Dispatch
 
-When the user invokes a slash-style workflow such as `/research`,
-`/plan`, `/implement`, `/validate`, `/pre-launch`, `/update-docs`,
-`/release`, `/fix-ci`, `/describe-pr`, or `/status`:
+When the user invokes an RPI workflow such as `/rpi-research`,
+`/rpi-plan`, `/rpi-implement`, `/rpi-validate`, `/rpi-pre-launch`,
+`/rpi-update-docs`, `/rpi-release`, `/rpi-fix-ci`,
+`/rpi-describe-pr`, or `/rpi-status`:
 
-1. Check for the matching file in `.claude/commands/`.
-2. Read that command file completely before acting.
+1. Claude Code reads `.claude/skills/<workflow>/SKILL.md`; Codex reads the
+   matching `.agents/skills/<workflow>/SKILL.md`.
+2. Read the selected skill and its required references completely before acting.
 3. Follow it as the workflow spec for this task.
-4. Keep all outputs in the repo locations required by that command.
+4. Keep all outputs in the repository locations required by that skill.
 
-If the command file references a plan path or research path, read that
+The retained `/release` command is a legacy explicit-only alias. Prefer
+`/rpi-release`. If a workflow references a plan path or research path, read that
 document fully before doing anything else.
 
-## Claude-to-Codex Translation
+## Harness Translation
 
-The command files are written for Claude Code. In Codex, translate the
-Claude-native parts to the closest equivalent behavior:
+Translate harness-specific operations to the closest equivalent behavior:
 
 - `/simplify` -- if `codex-simplify` is installed, use it; otherwise run
   a dedicated post-implementation review for reuse, quality, and
@@ -52,36 +53,24 @@ Claude-native parts to the closest equivalent behavior:
 
 Preserve the methodology even when the harness differs.
 
-## Codex-Only Skills
-
-- Do not define a project skill literally named `simplify` in a
-  Claude-compatible repo.
-- If Codex needs a local equivalent of a Claude-native command, use a
-  non-conflicting name such as `codex-simplify`.
-- Keep the canonical copy outside `.claude/skills/` and sync it into
-  `~/.codex/skills/` for local Codex discovery.
-
 ## Rules Loading
 
-Always follow `CLAUDE.md` and then load `.claude/rules/` like this:
+Always follow the managed instruction blocks below. Load `.rpi/rules/` through
+the conditional rule map:
 
-- Always read `rpi-details.md` and `push-accountability.md` if present
-- For other rule files with `paths` frontmatter, apply them when the
-  files you are reading or editing match those path globs
-- If a rule conflicts with a command file, the command file governs the
-  workflow and the rule governs local constraints within that workflow
+- The embedded RPI details and push accountability blocks always apply.
+- Read a conditional rule when the task or edited path matches its map entry.
+- A workflow skill governs its process; the rule governs local constraints.
 
 ## Skills
 
-Treat `.claude/skills/*/SKILL.md` as on-demand skills:
+Treat `.agents/skills/*/SKILL.md` and `.claude/skills/*/SKILL.md` as the native
+on-demand packages for their respective harnesses:
 
 - Load a skill when the task matches its description
 - Load a skill when a command or rule points to it
 - Use the skill as supplemental instructions, not as a replacement for
   the command workflow
-
-Personal Codex-only skills may also exist in `~/.codex/skills/`.
-Use them only when they do not shadow Claude-native command names.
 
 ## Outputs and Gates
 
@@ -105,7 +94,7 @@ describe what exists; do not suggest improvements unless asked.
 
 ## Verification and Git
 
-- Run the verification commands specified by the command file, the plan,
+- Run the verification commands specified by the workflow skill, the plan,
   or `CLAUDE.md`
 - Keep verification sequential unless the workflow explicitly says work
   can be parallelized
@@ -114,3 +103,117 @@ describe what exists; do not suggest improvements unless asked.
 - Preserve the project's branch topology exactly as documented in
   `CLAUDE.md`, and keep implementation work in isolated worktrees or
   temporary branches
+<!-- rpi:push-accountability:start -->
+# Push Accountability
+
+Keep working branches and worktrees local. Finish applicable tests, coverage,
+typechecks, lint, build and deployment preflight locally, resolve failures,
+and integrate completed work locally into the documented integration branch.
+Inspect workflow and deployment triggers before the single authorized push of
+that completed branch. Never create Vercel Preview deployments or publish
+working branches/PRs for experimentation. If an integration push would create a
+Preview, stop before pushing and use only a documented, non-destructive bypass.
+Production publication remains separately and explicitly authorized. Read-only
+inspection of existing runs and deployments is allowed.
+
+Commit or preserve intended changes before pulling; never pull through a dirty
+tree. After an authorized push, inspect every expected workflow for the exact
+pushed commit. Diagnose failures from existing logs and reproduce/fix locally.
+Report the failed remote result; do not trigger reruns or a fix-and-repush loop.
+A new remote action needs authorization after the complete local gates pass.
+<!-- rpi:push-accountability:end -->
+<!-- rpi:rpi-details:start -->
+# RPI Details
+
+## Context Management
+
+- Each RPI phase should be its own conversation.
+  Preserve their acceptance boundaries unless the user explicitly authorizes
+  continuation; a continuation instruction does not remove verification.
+- Use `/clear` between unrelated tasks.
+  Use `/compact` when context is heavy but the task continues.
+- Handoffs record objective, approved scope, base/current commit and worktree,
+  findings, decisions, check evidence and tested identity, deviations, risks and
+  next phase. On resume, verify actual files, refs and evidence validity before
+  relying on the handoff; compaction never grants new authority.
+- Subagents are context control mechanisms --
+  they search/read in their window and return only distilled results.
+- Research and planning happen against the integration branch.
+  Implementation happens in worktrees or temporary branches.
+
+## Rules for All Phases
+
+- Read controlling instructions/contracts and directly mentioned files completely.
+  Inspect implementation to the depth needed; reuse valid prior reads.
+- In `rpi-research`, document what exists without improvement recommendations.
+  Use the separate `rpi-assess` workflow for evaluative research and alternatives.
+- Every code reference must include file:line.
+- Delegate only useful bounded independent assignments within this phase.
+  A narrow task may stay with the parent. State objective, permitted actions,
+  owned files, evidence/output, resource budget and terminal condition for each
+  assignment. Missing required results remain coverage gaps until resolved.
+- Never write documents with placeholder values.
+- Exhaust all tools before suggesting manual steps --
+  check CLI tools, shell commands, MCP servers, and file tools
+  before escalating to the user.
+
+## Rules for Implementation
+
+- Follow the atomic loop:
+  implement -> independent review -> repair -> simplify -> verify.
+  The native simplify command or Codex helper catches code reuse, quality, and efficiency issues
+  that the plan-compliance reviewer does not check.
+- Independent batch work stays local, one owner per file set/worktree and one
+  integration owner. Never use a batch mode that automatically publishes PRs.
+  Keep at most three simultaneous implementers; use fewer when the task or
+  available resources do not justify three.
+- Run ALL automated verification after each phase.
+- Stop after each phase for acceptance unless the user explicitly authorizes
+  continuation. Finish all authorized phase work before that gate.
+- If a technical discovery invalidates the plan contract, record the adjustment
+  and explain the impact before dependent work; ask only for a required new decision.
+
+## Pre-Release Workflow
+
+`rpi-pre-launch` -> `rpi-remediate` -> `rpi-update-docs` -> `rpi-release`
+
+After `rpi-pre-launch`, include a simplify pass for reuse, quality and
+efficiency. Track its findings with the other audit results; resolve security
+and infrastructure findings through the same review, repair and verification
+loop. Preserve all required audit domains regardless of staffing.
+
+Resolve every confirmed actionable finding before acceptance. Reject false
+positives with evidence. Strategic findings needing a new architectural decision
+receive explicit local dispositions and owner review; external issue creation
+requires authorization. Never silently discard a finding.
+
+## Testing Philosophy
+
+Prefer automated verification.
+Manual only for: sudo, hardware, new installs, visual-only.
+Use deterministic linting/formatting tools. Preserve TDD for behavioral code
+changes. Run all required phase/final gates locally, sequentially with failure
+aggregation; a later success cannot erase an earlier failure. Reuse evidence
+only for unchanged tested inputs, never as a substitute for an invalidated gate.
+<!-- rpi:rpi-details:end -->
+<!-- rpi:rule-map:start -->
+## Conditional rule access
+
+Before acting on a matching task/path, read the installed rule body below.
+The installation manifest records the selected components and exact mappings.
+This root map applies even when a session starts at the repository root and
+later edits a nested directory; it is an instruction contract, not a native
+Codex glob loader. Sessions started inside a subproject also read their actual
+root-to-current-directory instruction chain. Preserve project-specific overrides.
+
+| Task or path | Required resource | Essential constraint |
+| --- | --- | --- |
+| Deployment, CI, release or infrastructure configuration | `.rpi/rules/deployment-safety.md` | Local gates first; no Vercel Preview; production needs authorization. |
+| SQL, Supabase migrations, schema, data access or database tests | `.rpi/rules/supabase.md` | Reset/test locally; privileges and RLS are distinct; remote targets need authorization. |
+| Behavioral changes, tests, fixtures and validation | `.rpi/rules/testing.md` | TDD for behavioral code; every required check must run and pass. |
+| WebMCP, MCP tools, tool registration or agent-facing interfaces | `.rpi/rules/webmcp.md` | Validate on the server; isolate unstable browser APIs and test caller recovery. |
+
+If a required component is missing, report the exact missing path and run the
+read-only installation check before proceeding with dependent work. Never
+invent a successful read or silently treat an incomplete install as healthy.
+<!-- rpi:rule-map:end -->
