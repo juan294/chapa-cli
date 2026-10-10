@@ -40,8 +40,21 @@ export interface ServerFailure {
   helpUrl?: string;
 }
 
+/**
+ * What the server did with the linked login's own Chapa profile. Absent on a
+ * server that predates link-time removal.
+ */
+export type DuplicateProfile = "none" | "removed" | "failed";
+
 export type LinkResult =
-  | { ok: true; owner?: string; login: string; alsoRegistered: boolean; collection: "queued" | "deferred" }
+  | {
+    ok: true;
+    owner?: string;
+    login: string;
+    alsoRegistered: boolean;
+    duplicateProfile?: DuplicateProfile;
+    collection: "queued" | "deferred";
+  }
   | ServerFailure;
 
 export type LinkState =
@@ -122,6 +135,10 @@ async function callServer(
   }
 }
 
+function isDuplicateProfile(value: unknown): value is DuplicateProfile {
+  return value === "none" || value === "removed" || value === "failed";
+}
+
 /** Link a secondary GitHub account to the logged-in Chapa profile. */
 export async function linkGitHubAccount(opts: LinkOptions): Promise<LinkResult> {
   const res = await callServer(opts, "/api/github-linked", "POST", {
@@ -130,7 +147,7 @@ export async function linkGitHubAccount(opts: LinkOptions): Promise<LinkResult> 
   });
   if (!res.ok) return unsupportedOn404(res);
 
-  const { linked, owner, login, alsoRegistered, collection } = res.data;
+  const { linked, owner, login, alsoRegistered, duplicateProfile, collection } = res.data;
   if (linked !== true || typeof login !== "string") {
     return { ok: false, status: res.status, message: UNEXPECTED_RESPONSE };
   }
@@ -139,6 +156,7 @@ export async function linkGitHubAccount(opts: LinkOptions): Promise<LinkResult> 
     ...(typeof owner === "string" && { owner }),
     login,
     alsoRegistered: alsoRegistered === true,
+    ...(isDuplicateProfile(duplicateProfile) && { duplicateProfile }),
     collection: collection === "deferred" ? "deferred" : "queued",
   };
 }

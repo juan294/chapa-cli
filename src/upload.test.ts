@@ -89,12 +89,12 @@ describe("linkGitHubAccount", () => {
 
   it("posts exactly { login, token } to /api/github-linked with the CLI Bearer token", async () => {
     mockFetch.mockResolvedValue(jsonResponse({
-      linked: true, login: "Corp_User", alsoRegistered: false, collection: "queued",
+      linked: true, login: "Corp_User", alsoRegistered: false, duplicateProfile: "none", collection: "queued",
     }));
 
     const result = await linkGitHubAccount(linkOptions());
 
-    expect(result).toEqual({ ok: true, login: "Corp_User", alsoRegistered: false, collection: "queued" });
+    expect(result).toEqual({ ok: true, login: "Corp_User", alsoRegistered: false, duplicateProfile: "none", collection: "queued" });
     expect(mockFetch).toHaveBeenCalledTimes(1);
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toBe(`${SERVER}/api/github-linked`);
@@ -149,6 +149,44 @@ describe("linkGitHubAccount", () => {
     const result = await linkGitHubAccount(linkOptions());
 
     expect(result).toEqual({ ok: true, login: "corp_user", alsoRegistered: true, collection: "deferred" });
+  });
+
+  it.each(["none", "removed", "failed"] as const)("maps duplicateProfile %s", async (duplicateProfile) => {
+    mockFetch.mockResolvedValue(jsonResponse({
+      linked: true, login: "corp_user", alsoRegistered: duplicateProfile === "failed", duplicateProfile, collection: "queued",
+    }));
+
+    const result = await linkGitHubAccount(linkOptions());
+
+    expect(result).toEqual({
+      ok: true, login: "corp_user", alsoRegistered: duplicateProfile === "failed", duplicateProfile, collection: "queued",
+    });
+  });
+
+  it("leaves duplicateProfile undefined for an older server, an unknown value or a wrong type", async () => {
+    for (const value of [undefined, "deleted", true, 1, null]) {
+      mockFetch.mockResolvedValue(jsonResponse({
+        linked: true, login: "corp_user", alsoRegistered: true, collection: "queued",
+        ...(value !== undefined && { duplicateProfile: value }),
+      }));
+
+      const result = await linkGitHubAccount(linkOptions());
+
+      expect(result).toEqual({ ok: true, login: "corp_user", alsoRegistered: true, collection: "queued" });
+      expect(result).not.toHaveProperty("duplicateProfile");
+    }
+  });
+
+  it("returns the server code and message on 409 linked_account_has_links and 503 link_state_unavailable", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "linked_account_has_links", message: "Unlink it first." }, 409));
+    expect(await linkGitHubAccount(linkOptions())).toEqual({
+      ok: false, status: 409, code: "linked_account_has_links", message: "Unlink it first.",
+    });
+
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "link_state_unavailable", message: "Try again later." }, 503));
+    expect(await linkGitHubAccount(linkOptions())).toEqual({
+      ok: false, status: 503, code: "link_state_unavailable", message: "Try again later.",
+    });
   });
 
   it("returns the server error code, message, scopes and help link on 422", async () => {

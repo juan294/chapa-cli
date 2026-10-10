@@ -13,7 +13,7 @@ import {
   readGitHubLinkStatus,
   unlinkGitHubAccount,
 } from "./upload.js";
-import type { ServerFailure } from "./upload.js";
+import type { LinkResult, ServerFailure } from "./upload.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -404,6 +404,26 @@ function describeServerFailure(failure: ServerFailure, emuHandle?: string): stri
   return lines;
 }
 
+/**
+ * Notes about the linked login's own Chapa profile. A server that predates
+ * link-time removal sends no `duplicateProfile`, so only it falls back to the
+ * support note.
+ */
+function duplicateProfileLines(result: Extract<LinkResult, { ok: true }>): string[] {
+  switch (result.duplicateProfile) {
+    case "removed":
+      return [`Removed the duplicate profile ${result.login}. Its badge and share page now show 'Not on Chapa yet'.`];
+    case "failed":
+      return [`${result.login} has its own Chapa profile and Chapa could not remove it. Run the same command again.`];
+    case "none":
+      return [];
+    default:
+      return result.alsoRegistered
+        ? [`${result.login} also has its own Chapa profile; ask support to remove it to avoid a duplicate.`]
+        : [];
+  }
+}
+
 async function handleMerge(args: CliArgs): Promise<void> {
   const log = createLogger({ verbose: args.verbose, json: args.json });
   log.time("total");
@@ -495,6 +515,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
         sourceHandle: result.login,
         linked: true,
         alsoRegistered: result.alsoRegistered,
+        duplicateProfile: result.duplicateProfile,
         collection: result.collection,
         linkStatus: status.ok ? status.link : null,
         ...(needsReconnect && { recoveryCommand: recoveryCommand(result.login) }),
@@ -508,9 +529,7 @@ async function handleMerge(args: CliArgs): Promise<void> {
       if (result.collection === "deferred") {
         log.info("Collection will start with the next daily run.");
       }
-      if (result.alsoRegistered) {
-        log.info(`${result.login} also has its own Chapa profile; ask support to remove it to avoid a duplicate.`);
-      }
+      for (const line of duplicateProfileLines(result)) log.info(line);
       if (needsReconnect) {
         log.warn(`${result.login} needs a new token. Run: ${recoveryCommand(result.login)}`);
       }
