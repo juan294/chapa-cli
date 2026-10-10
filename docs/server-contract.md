@@ -28,14 +28,14 @@ token as Bearer (a GitHub token would authenticate as its own account).
 
 | Status | Body | CLI behavior |
 |--------|------|--------------|
-| 200 | `{ linked: true, owner, login, alsoRegistered: boolean, collection: "queued" \| "deferred" }` | Print the link message, naming `owner` (the CLI token's profile); note a duplicate profile when `alsoRegistered`; note the next daily run when `deferred`. Then read the status once. |
+| 200 | `{ linked: true, owner, login, alsoRegistered: boolean, duplicateProfile: "none" \| "removed" \| "failed", collection: "queued" \| "deferred" }` | Print the link message, naming `owner` (the CLI token's profile). `removed`: print that the duplicate profile was removed. `failed`: print that the profile could not be removed and ask the user to run the same command again. `none`: print nothing. A server that omits `duplicateProfile` is older: note a duplicate profile when `alsoRegistered` and point to support. `alsoRegistered` is true only while a profile still exists after the request. Note the next daily run when `deferred`. Then read the status once. |
 | 400 | `{ error: "invalid_body", message }` | Print the message. |
 | 401 | `{ error: "authentication_required" \| "cli_token_required", message }` | Print the message and tell the user to run `chapa login`. |
 | 403 | `{ error: "token_identity_mismatch", message }` | Print the message, the token setup link and the required scopes. |
-| 409 | `{ error: "linked_elsewhere" \| "same_as_owner", message }` | Print the message. A conflict is about the account, not the token. |
+| 409 | `{ error: "linked_elsewhere" \| "same_as_owner" \| "linked_account_has_links", message }` | Print the message. A conflict is about the account, not the token. |
 | 422 | `{ error: "token_rejected" \| "insufficient_scope", message, requiredScopes: ["repo","read:user","read:org"], missingScopes?: string[], helpUrl }` | Print the message, the setup link, the required and missing scopes, and the recovery command `npx chapa-cli@latest merge --emu-handle B --emu-token <token>`. |
 | 429 | `{ error: "rate_limited", message }` | Print the message. |
-| 503 | `{ error: "persist_failed" \| "github_unavailable", message }` | Print the message (try again). |
+| 503 | `{ error: "persist_failed" \| "github_unavailable" \| "link_state_unavailable", message }` | Print the message (try again). |
 | 404 | any | The server has no link routes yet: say so. |
 | other | any | Print `message`, else `error`, else `Server returned <status>`. A 410 comes only from the legacy `POST /api/supplemental` path. |
 

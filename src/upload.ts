@@ -51,6 +51,7 @@ export type LinkResult =
     ok: true;
     owner?: string;
     login: string;
+    /** A profile for the linked login still exists after the request. */
     alsoRegistered: boolean;
     duplicateProfile?: DuplicateProfile;
     collection: "queued" | "deferred";

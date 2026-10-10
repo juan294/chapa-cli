@@ -207,6 +207,21 @@ describe("chapa merge links a secondary GitHub account", () => {
     expect(allOutput()).not.toContain("also has its own Chapa profile");
   });
 
+  it.each(["none", "removed"] as const)(
+    "200 with duplicateProfile %s wins over alsoRegistered: no support note",
+    async (duplicateProfile) => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: true, duplicateProfile }))
+        .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+      await runCli(mergeArgs(), telemetrySent);
+
+      expect(allOutput()).not.toContain("ask support");
+      expect(allOutput()).not.toContain("also has its own Chapa profile");
+      expect(exitSpy).not.toHaveBeenCalled();
+    },
+  );
+
   it("200 from an older server (no duplicateProfile) with alsoRegistered and a deferred collection: prints both notes and exits 0", async () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse({ ...OLDER_SERVER_LINKED, alsoRegistered: true, collection: "deferred" }))
