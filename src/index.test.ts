@@ -103,7 +103,7 @@ function defaultArgs(overrides: Record<string, unknown> = {}) {
 }
 
 function linkSuccess(overrides: Record<string, unknown> = {}) {
-  return { ok: true, login: "corp_user", alsoRegistered: false, collection: "queued", ...overrides };
+  return { ok: true, login: "corp_user", alsoRegistered: false, duplicateProfile: "none", collection: "queued", ...overrides };
 }
 
 function linkFailure(status: number, message: string, code?: string) {

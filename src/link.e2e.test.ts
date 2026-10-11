@@ -31,7 +31,9 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const LINKED = { linked: true, login: "corp_user", alsoRegistered: false, collection: "queued" };
+const LINKED = { linked: true, login: "corp_user", alsoRegistered: false, duplicateProfile: "none", collection: "queued" };
+// An older server answers without duplicateProfile.
+const { duplicateProfile: _omitted, ...OLDER_SERVER_LINKED } = LINKED;
 const STATUS_OK = { linked: true, login: "corp_user", needsReconnect: false, connectedAt: "2026-10-08T10:00:00Z" };
 
 let output: string[];
@@ -164,9 +166,65 @@ describe("chapa merge links a secondary GitHub account", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
-  it("200 with alsoRegistered and a deferred collection: prints both notes and exits 0", async () => {
+  it("200 with duplicateProfile removed: prints the removal line, not the support note, and exits 0", async () => {
     mockFetch
-      .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: true, collection: "deferred" }))
+      .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: false, duplicateProfile: "removed" }))
+      .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain(
+      "Removed the duplicate profile corp_user. Its badge and share page now show 'Not on Chapa yet'.",
+    );
+    expect(allOutput()).not.toContain("ask support");
+    expect(allOutput()).not.toContain("also has its own Chapa profile");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("200 with duplicateProfile failed: tells the user to run the same command again and exits 0", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: true, duplicateProfile: "failed" }))
+      .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain(
+      "corp_user has its own Chapa profile and Chapa could not remove it. Run the same command again.",
+    );
+    expect(allOutput()).not.toContain("ask support");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("200 with duplicateProfile none prints no profile note", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(LINKED))
+      .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).not.toContain("Removed the duplicate profile");
+    expect(allOutput()).not.toContain("could not remove it");
+    expect(allOutput()).not.toContain("also has its own Chapa profile");
+  });
+
+  it.each(["none", "removed"] as const)(
+    "200 with duplicateProfile %s wins over alsoRegistered: no support note",
+    async (duplicateProfile) => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: true, duplicateProfile }))
+        .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+      await runCli(mergeArgs(), telemetrySent);
+
+      expect(allOutput()).not.toContain("ask support");
+      expect(allOutput()).not.toContain("also has its own Chapa profile");
+      expect(exitSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("200 from an older server (no duplicateProfile) with alsoRegistered and a deferred collection: prints both notes and exits 0", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse({ ...OLDER_SERVER_LINKED, alsoRegistered: true, collection: "deferred" }))
       .mockResolvedValueOnce(jsonResponse(STATUS_OK));
 
     await runCli(mergeArgs(), telemetrySent);
@@ -197,6 +255,29 @@ describe("chapa merge links a secondary GitHub account", () => {
 
     expect(allOutput()).toContain("Linked corp_user to juan294.");
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("409 linked_account_has_links: prints the server message, no token guidance, and exits 1", async () => {
+    const message = "corp_user has its own linked GitHub account. Sign in as corp_user, run `chapa unlink`, then link it again.";
+    mockFetch.mockResolvedValueOnce(jsonResponse({ error: "linked_account_has_links", message }, 409));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain(message);
+    expect(allOutput()).not.toContain(HELP_URL);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("503 link_state_unavailable: prints the server message and exits 1", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({
+      error: "link_state_unavailable", message: "Chapa could not read the link state. Try again later.",
+    }, 503));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain("Chapa could not read the link state. Try again later.");
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it("409: prints the server message, the token setup link and the required scopes, and exits 1", async () => {
@@ -313,7 +394,7 @@ describe("chapa merge links a secondary GitHub account", () => {
 
   it("--json success: writes one JSON object with the link result", async () => {
     mockFetch
-      .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: true }))
+      .mockResolvedValueOnce(jsonResponse({ ...LINKED, alsoRegistered: true, duplicateProfile: "failed" }))
       .mockResolvedValueOnce(jsonResponse(STATUS_OK));
 
     await runCli(mergeArgs("--json"), telemetrySent);
@@ -325,6 +406,7 @@ describe("chapa merge links a secondary GitHub account", () => {
       sourceHandle: "corp_user",
       linked: true,
       alsoRegistered: true,
+      duplicateProfile: "failed",
       collection: "queued",
       linkStatus: { linked: true, login: "corp_user", needsReconnect: false, connectedAt: "2026-10-08T10:00:00Z" },
     }));

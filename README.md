@@ -88,7 +88,7 @@ When the link succeeds, the CLI prints:
 Linked your-emu-handle to your-handle. Chapa will collect your-emu-handle's activity daily; your badge updates after the next collection.
 ```
 
-If the second account also has its own Chapa profile, the CLI tells you. Ask support to remove that profile, so that the same work does not show on two badges.
+If the second account also has its own Chapa profile, Chapa removes that profile when you link, so that the same work does not show on two badges. The CLI prints `Removed the duplicate profile`. If the removal fails, the link stays and the CLI asks you to run the same command again. A server that predates this change still asks you to contact support.
 
 If the server refuses the token (wrong account, missing scopes, already linked to another profile), the CLI prints the reason, the required scopes and a link to [EMU token setup](#emu-token-setup). When the token is rejected, expired or revoked, create a new token and run:
 
@@ -207,6 +207,8 @@ chapa merge --emu-handle your-emu-handle
 | `This token belongs to a different GitHub account` | `--emu-handle` and the token do not match | Use the token of the account named in `--emu-handle` |
 | `already linked to another Chapa profile` | The account is linked to a different Chapa profile | Log in as that profile and run `chapa unlink` first |
 | `Run chapa login` | CLI login is missing or expired | Run `chapa login` |
+| `has its own linked GitHub account` | The second account already has a linked account of its own | Sign in as the second account, run `chapa unlink`, then link it again |
+| `could not remove it` | Chapa could not remove the second account's own profile | Run the same command again |
 | `Try again` (503) | Chapa or GitHub was temporarily unavailable | Run the same command again |
 | `Server returned 410` | An old CLI version | Run `npx chapa-cli@latest merge --emu-handle <handle> --emu-token <token>` |
 | `This Chapa server does not support linking` | The server is older than this CLI | Try again after the server is updated |
