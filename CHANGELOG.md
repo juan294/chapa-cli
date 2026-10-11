@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-11
+
+### Changed
+
+- `chapa merge` reports what the server did with the second account's own
+  Chapa profile. When Chapa removed it, the CLI prints
+  `Removed the duplicate profile <login>`. When the removal failed, the link
+  stays and the CLI asks you to run the same command again. When there was
+  no such profile, it prints nothing. A server that predates this change
+  still gets the old note that points to support (juan294/chapa#1415)
+- `chapa merge --json` adds `duplicateProfile` (`none`, `removed` or
+  `failed`). `alsoRegistered` is now true only while a profile still exists
+  after the request
+- The README troubleshooting table and `docs/server-contract.md` describe the
+  two new refusals: a second account that has a linked account of its own
+  (409 `linked_account_has_links`) and a link state Chapa cannot read
+  (503 `link_state_unavailable`). The CLI already printed their messages
+
 ## [0.6.0] - 2026-10-08
 
 ### Changed
