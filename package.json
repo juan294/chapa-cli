@@ -53,13 +53,13 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "@vitest/coverage-v8": "^4.1.9",
-    "linkedom": "^0.18.12",
+    "@types/node": "^26.6.5",
+    "@vitest/coverage-v8": "^4.1.12",
+    "linkedom": "^0.18.13",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
-    "vite": "^8.1.2",
-    "vitest": "^4.1.9"
+    "vite": "^8.3.4",
+    "vitest": "^4.1.12"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.34.7"
 }
