@@ -62,15 +62,17 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
       - name: Ensure npm supports trusted publishing
-        # Node 22 still bundles npm 10.9, which has no OIDC support at all and
-        # fails with a bare 401 that reads like a credentials problem. Trusted
-        # publishing needs >= 11.5.1, so upgrade before anything touches the
-        # registry and record the version in the log.
+        # Trusted publishing needs npm >= 11.5.1. An older npm (Node 22 bundles
+        # 10.9) has no OIDC support and fails with a bare 401 that reads like a
+        # credentials problem. The Node line in .nvmrc bundles a newer npm today,
+        # but the upgrade keeps publishing independent of the bundled version,
+        # so upgrade before anything touches the registry and record the
+        # version in the log.
         run: |
           npm install -g npm@latest
           npm --version

@@ -28,7 +28,7 @@ describe("publish workflow (npm trusted publishing)", () => {
     expect(workflow).toMatch(/^\s+id-token:\s*write\s*$/m);
   });
 
-  it("upgrades npm past 11.5.1, since Node 22 bundles npm 10.9 without OIDC", () => {
+  it("upgrades npm past 11.5.1 whatever npm the .nvmrc Node bundles", () => {
     expect(workflow).toMatch(/npm install -g npm@latest/);
   });
 
