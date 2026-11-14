@@ -4,9 +4,12 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
-const releaseSkills = [
+const releaseOverlayFile = ".rpi/project/rpi-release.md";
+const releaseOverlay = readFileSync(`${repoRoot}${releaseOverlayFile}`, "utf8");
+const releaseSources = [
   ".claude/skills/rpi-release/SKILL.md",
   ".agents/skills/rpi-release/SKILL.md",
+  releaseOverlayFile,
 ].map((file) => [file, readFileSync(`${repoRoot}${file}`, "utf8")] as const);
 const claudeGuidance = readFileSync(`${repoRoot}CLAUDE.md`, "utf8");
 const deploymentSkill = readFileSync(
@@ -15,21 +18,22 @@ const deploymentSkill = readFileSync(
 );
 
 describe("develop-to-main release topology", () => {
-  it.each(releaseSkills)(
-    "promotes releases with a merge commit and rejects squash promotion in %s",
-    (_file, skill) => {
-      const start = skill.indexOf(
-        "## Project-specific procedure (develop to main",
-      );
-      const end = skill.indexOf("## Authorized publication");
-      expect(start).toBeGreaterThanOrEqual(0);
-      expect(end).toBeGreaterThan(start);
-      const developFlow = skill.slice(start, end);
+  it("promotes releases with a merge commit in the rpi-release overlay", () => {
+    const start = releaseOverlay.indexOf("\n## Procedure\n");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const next = releaseOverlay.indexOf("\n## ", start + 1);
+    const developFlow = releaseOverlay.slice(
+      start,
+      next === -1 ? undefined : next,
+    );
 
-      expect(developFlow).toContain("gh pr merge --merge");
-      expect(developFlow).not.toMatch(/gh pr merge --squash\b/);
-    },
-  );
+    expect(developFlow).toContain("gh pr merge --merge");
+    expect(developFlow).not.toMatch(/gh pr merge --squash\b/);
+  });
+
+  it.each(releaseSources)("rejects squash promotion in %s", (_file, text) => {
+    expect(text).not.toMatch(/gh pr merge --squash\b/);
+  });
 
   it("documents merge commits for releases and squash merges for features", () => {
     expect(claudeGuidance).toContain(
