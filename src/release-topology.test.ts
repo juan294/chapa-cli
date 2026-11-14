@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
-const releaseCommand = readFileSync(
-  `${repoRoot}.claude/commands/release.md`,
-  "utf8",
-);
+const releaseSkills = [
+  ".claude/skills/rpi-release/SKILL.md",
+  ".agents/skills/rpi-release/SKILL.md",
+].map((file) => [file, readFileSync(`${repoRoot}${file}`, "utf8")] as const);
 const claudeGuidance = readFileSync(`${repoRoot}CLAUDE.md`, "utf8");
 const deploymentSkill = readFileSync(
   `${repoRoot}.claude/skills/deployment-safety/SKILL.md`,
@@ -15,14 +15,21 @@ const deploymentSkill = readFileSync(
 );
 
 describe("develop-to-main release topology", () => {
-  it("promotes releases with a merge commit and rejects squash promotion", () => {
-    const developFlow = releaseCommand.slice(
-      releaseCommand.indexOf("### Develop-based flow"),
-    );
+  it.each(releaseSkills)(
+    "promotes releases with a merge commit and rejects squash promotion in %s",
+    (_file, skill) => {
+      const start = skill.indexOf(
+        "## Project-specific procedure (develop to main",
+      );
+      const end = skill.indexOf("## Authorized publication");
+      expect(start).toBeGreaterThanOrEqual(0);
+      expect(end).toBeGreaterThan(start);
+      const developFlow = skill.slice(start, end);
 
-    expect(developFlow).toContain("gh pr merge --merge --auto");
-    expect(developFlow).not.toMatch(/gh pr merge --squash\b/);
-  });
+      expect(developFlow).toContain("gh pr merge --merge");
+      expect(developFlow).not.toMatch(/gh pr merge --squash\b/);
+    },
+  );
 
   it("documents merge commits for releases and squash merges for features", () => {
     expect(claudeGuidance).toContain(

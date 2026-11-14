@@ -29,8 +29,7 @@ When the user invokes an RPI workflow such as `/rpi-research`,
 3. Follow it as the workflow spec for this task.
 4. Keep all outputs in the repository locations required by that skill.
 
-The retained `/release` command is a legacy explicit-only alias (kept because
-`src/release-topology.test.ts` reads it). Prefer `/rpi-release`. If a workflow references a plan path or research path, read that
+If a workflow references a plan path or research path, read that
 document fully before doing anything else.
 
 ## Harness Translation

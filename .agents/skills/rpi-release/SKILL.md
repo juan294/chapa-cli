@@ -104,8 +104,8 @@ Ported from the retired `/release` command's "Develop-based flow".
   test "$mergeTree" = "$developTree"
   ```
 
-- Only after the owner authorizes publication: merge with `--merge`, never
-  `--squash`; confirm the merge with `gh pr view --json state`; tag the release
+- Only after the owner authorizes publication: merge with `gh pr merge --merge`
+  (add `--auto` only when auto-merge is authorized), never `--squash`; confirm the merge with `gh pr view --json state`; tag the release
   merge commit on `main`. The GitHub Release must target `main`: `publish.yml`
   hard-fails otherwise and then publishes to npm via OIDC trusted publishing.
   This section grants no publication authority.
