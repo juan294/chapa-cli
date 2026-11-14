@@ -82,6 +82,34 @@ new release authorization.
    known issues, remaining limitations and expected remote actions as the
    concrete publication candidate.
 
+## Project-specific procedure (develop to main merge-commit promotion)
+
+Ported from the retired `/release` command's "Develop-based flow".
+
+- The release PR is `develop` to `main` directly, with no intermediate
+  `release/vX.Y.Z` branch. It must use a merge commit. Never squash a release PR:
+  a squash discards the shared ancestry and makes later release PRs depend on a
+  manual back-merge. Feature PRs into `develop` may still squash. Never pass
+  `--delete-branch`; `develop` is permanent.
+- Before the owner-authorized publication, run these read-only checks. Both merge
+  settings must be `true`, and the prospective release merge must be conflict-free
+  and tree-identical to the integration candidate. Stop if either check fails.
+
+  ```bash
+  gh api "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
+    --jq '{allow_merge_commit, allow_squash_merge}'
+  git fetch origin
+  developTree=$(git rev-parse 'origin/develop^{tree}')
+  mergeTree=$(git merge-tree --write-tree origin/main origin/develop)
+  test "$mergeTree" = "$developTree"
+  ```
+
+- Only after the owner authorizes publication: merge with `--merge`, never
+  `--squash`; confirm the merge with `gh pr view --json state`; tag the release
+  merge commit on `main`. The GitHub Release must target `main`: `publish.yml`
+  hard-fails otherwise and then publishes to npm via OIDC trusted publishing.
+  This section grants no publication authority.
+
 ## Authorized publication
 
 1. Use explicit release/publication authorization already supplied. Ordinary
