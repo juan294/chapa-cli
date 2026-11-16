@@ -1945,10 +1945,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "443197febb82bb4dc340958bf06e82fcc70dac82fcd0450120362f230fc66368",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -1972,10 +1972,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "ab22c3e927f5185c036f149f6f533fd08cf37e1989d1ec8db0ee217356270922",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -1999,10 +1999,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "57ff3f6102f7011ee71fd2285405dea2f44e685af9cfc07c6ab209586587405c",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2026,10 +2026,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "101226d16357512617b7f5b11a98686a5f83dcbda70e294904efb0f1ac69bbbe",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2053,10 +2053,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "c119ce4f91f437c6829b81123d2b245f6d912a81c3f73ab4a2dc2c222ce63fa1",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2080,10 +2080,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "a02de20d615fea28cc4be46800755b4ed0bc4899f13a1ba847be4b01ca18283b",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2107,10 +2107,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "8ca90edc265e92e7b6b5de5fee68a3b1e2cd2b7765142cc9d8a427c635c2d588",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2134,10 +2134,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "4dbfc989421270a35161a9c9f28b3ffa041f6cc242c07949c4c42481ff5257dc",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2161,10 +2161,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "6345ed00b010914b252aa84c2d1af3bd2efff3c743b2338e3efec1acdc7c9f9a",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2188,10 +2188,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "529596bcd5799f34a790283a882ea48a0e994444f33c163a91f7974639254e49",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2223,10 +2223,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
         "rendered_sha256": "518388ccaf32cdccc3dd7d962e7d3cde7a21729662aa0baaad307f7b4747cd41",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "entry-owned"
     },
@@ -2388,7 +2388,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "bb7479e28c0509716635db43dd5c2017946f1581a6fef4fd2e7f6e46a42bc15d",
+      "base_hash": "bab02348fd18c0f9dcabf533497290afff0607938a98c8ccb97a08375a2d2271",
       "component_id": "skill:rpi-assess",
       "consumers": [
         "claude"
@@ -2397,11 +2397,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "50d70c92a40b29f6ab2c9b93316acf1e7b2625705992b3a4a9c16b5c0c6dff61",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "bb7479e28c0509716635db43dd5c2017946f1581a6fef4fd2e7f6e46a42bc15d",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "0f34f14d25e87339d6570aaf879e7df1cc963806fa5d1a8340b830cba0eb6c2c",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "bab02348fd18c0f9dcabf533497290afff0607938a98c8ccb97a08375a2d2271",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2431,7 +2431,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "5d46404913fdab7c97d05151e726374c3e0090d0dcbe98f19b334448c3ce27cc",
+      "base_hash": "05e9cb454dbac136221c7451dbb5963149cc65843903d1ef6739f6b0f774ff42",
       "component_id": "skill:rpi-brainstorm",
       "consumers": [
         "claude"
@@ -2440,11 +2440,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "6ed0f20ec9fb73c056cab65101fd9c7157e02973c8b18111c2c42c790eee4e75",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "5d46404913fdab7c97d05151e726374c3e0090d0dcbe98f19b334448c3ce27cc",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "adfd312744f0fc0bf33bca6992204fe1f6de3cdc1753c6d67eafa8e0432a2592",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "05e9cb454dbac136221c7451dbb5963149cc65843903d1ef6739f6b0f774ff42",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2453,7 +2453,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "b72356e0d93717b4f19ee17e8d521202fc62e26a36b6549b092ecb87de7e789a",
+      "base_hash": "6dcd6ce75bfda11397051f07ef981012b999b4078a62dbd6cf6d65a0ed1e9357",
       "component_id": "skill:rpi-describe-pr",
       "consumers": [
         "claude"
@@ -2462,11 +2462,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "be06d3cb585ae96ee912bd496a62d8c367b5b4e567137af14ac0dd989dd6078a",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "b72356e0d93717b4f19ee17e8d521202fc62e26a36b6549b092ecb87de7e789a",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "f8786e32f15acd82c0800418868d286524623dd37b3c239b0c2906b29bac00fa",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "6dcd6ce75bfda11397051f07ef981012b999b4078a62dbd6cf6d65a0ed1e9357",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2496,7 +2496,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "e5608210f660230c90f578750158db915b83a85246502b21b479ae096e717896",
+      "base_hash": "ad695ea8b22ad362224ccc807c647a0f1f4c5cccb3c6c8c87a978af80c9018c0",
       "component_id": "skill:rpi-explore-release",
       "consumers": [
         "claude"
@@ -2505,11 +2505,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "a3c686faf4f7bcfddf6379dcab269d60b33088b83b3b4f50647fe98e9987744d",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "e5608210f660230c90f578750158db915b83a85246502b21b479ae096e717896",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "3afe71f9207b520cf1f3186c0b8c58b8aa74511b3dc251c8f265da61162ff763",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "ad695ea8b22ad362224ccc807c647a0f1f4c5cccb3c6c8c87a978af80c9018c0",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2539,7 +2539,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "0ba845da493f4e5f6b6a9a1e0295603ef2012bb793fac211837168d0045d52bc",
+      "base_hash": "f56a3c8f1c40b6388be5ffeaf1ddebde49dc6fdd177cbf883540dd1040c881fc",
       "component_id": "skill:rpi-fix-ci",
       "consumers": [
         "claude"
@@ -2548,11 +2548,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "454a24af15038f86970bc302d5b0b1ac68f69f595ac6a1ad1392cb012bd1117f",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "0ba845da493f4e5f6b6a9a1e0295603ef2012bb793fac211837168d0045d52bc",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "e5a90fd252e8ab350ab5a62af3800e52f6d8b20dc90ef109f912eb58a01cf91c",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "f56a3c8f1c40b6388be5ffeaf1ddebde49dc6fdd177cbf883540dd1040c881fc",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2582,7 +2582,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "60aacbe5260083c66cc5f960672ed6d3b7d017ea14eadf88598466b1ae5efa61",
+      "base_hash": "ea93266842130864bccae29297a7de786415dd669f068d27b435b8027f75d23f",
       "component_id": "skill:rpi-implement",
       "consumers": [
         "claude"
@@ -2591,11 +2591,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "4f0578f02258de5e972781eef0879828320e1793ca568157d1fc540e9e1ef378",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "60aacbe5260083c66cc5f960672ed6d3b7d017ea14eadf88598466b1ae5efa61",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "22cc1ead4cf9c6afebad5b89b7391f7de7c5d556152efe61adae71da5d2f998f",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "ea93266842130864bccae29297a7de786415dd669f068d27b435b8027f75d23f",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2688,7 +2688,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "6feaf78efbfc88987fa2d082e89bb0bf600c6c4f5982ad297f90acddad6c7094",
+      "base_hash": "c0725b4733d30fce121c5be3b790f67feb57d0caead30ce4abca6008e6bf7557",
       "component_id": "skill:rpi-plan",
       "consumers": [
         "claude"
@@ -2697,11 +2697,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "c00216bb5ee59216763bc68d52321cecc0ceabbc14085f0a9eed9cec8fa33273",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "6feaf78efbfc88987fa2d082e89bb0bf600c6c4f5982ad297f90acddad6c7094",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "f359aa0db4a5d36b9c62ea06b5cf08ca5fbff0733cb24551c3fc3c6bbcc05337",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "c0725b4733d30fce121c5be3b790f67feb57d0caead30ce4abca6008e6bf7557",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2752,7 +2752,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "3d507a1a4bb76d7e75b07b15a132443b98fcac6ac7203a599757bee4dff48661",
+      "base_hash": "f313cda559868a03fcc6b23d182c0713ee69e1782d600a84f57d31f72d81fe65",
       "component_id": "skill:rpi-pre-launch",
       "consumers": [
         "claude"
@@ -2761,11 +2761,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "e9767291618b6c2400c88b811f4fe2aa71b2bc8c75948d3b8dd78689e4b67de8",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "3d507a1a4bb76d7e75b07b15a132443b98fcac6ac7203a599757bee4dff48661",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "8dbf0f232f4964d9fe414db4bb297fa1d487c5517e8712943f04122fb11dee6a",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "f313cda559868a03fcc6b23d182c0713ee69e1782d600a84f57d31f72d81fe65",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2858,7 +2858,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "0059b9c5b31a36d6b9557ed2541333d23447b244d19cf10c9be13d785adb31ec",
+      "base_hash": "1080f6cc49b99f273430954e5b098f540b68567a206b9dba35e829b337c6fbf6",
       "component_id": "skill:rpi-release",
       "consumers": [
         "claude"
@@ -2867,11 +2867,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "7e8b592b517057a5af5063ccdf9aae60fd804d03ad4292409b7e7ce0dc445797",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "0059b9c5b31a36d6b9557ed2541333d23447b244d19cf10c9be13d785adb31ec",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "034673a9ed5006b10e90bcce3126fa2f952c54b89c9b4da3c2a4e6fddd07b81d",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "1080f6cc49b99f273430954e5b098f540b68567a206b9dba35e829b337c6fbf6",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -2922,7 +2922,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "1af04cf917a7cf4e9ea9eebef5ccee593ad9af6b1f96b88c3e5ff6315ba7dcdf",
+      "base_hash": "7c3d5f593cb8d99fd68c7914e5601c95c6591ff86488f9c8e110ea55d7dbf2f2",
       "component_id": "skill:rpi-remediate",
       "consumers": [
         "claude"
@@ -2931,11 +2931,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "b0b05ab45e73cfeb48379fe955bb63677a03bfcd55f284eca94ffa972873d51b",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "1af04cf917a7cf4e9ea9eebef5ccee593ad9af6b1f96b88c3e5ff6315ba7dcdf",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "c6ca1639c4f57b3a61fa9b97be8f8df1b0e2a7732b7923f07e2f5e89a0885530",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "7c3d5f593cb8d99fd68c7914e5601c95c6591ff86488f9c8e110ea55d7dbf2f2",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3028,7 +3028,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "c1b830471d6cfb5dc9c9a05989979329ac061b6a5652dcd469b36d8bd904d5f8",
+      "base_hash": "b6c6f8b2358635885d3e47be6eaac3b9553f77435c76a682b32b125a62034687",
       "component_id": "skill:rpi-research",
       "consumers": [
         "claude"
@@ -3037,11 +3037,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "221b51de15206193e5de504b67769bd66c90148d12d917ee8e361f9c9c4717d2",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "c1b830471d6cfb5dc9c9a05989979329ac061b6a5652dcd469b36d8bd904d5f8",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "72c049a88d5dcac8a8786b08edfd12f727fca1a369763641da4d1a0167239caa",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "b6c6f8b2358635885d3e47be6eaac3b9553f77435c76a682b32b125a62034687",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3092,7 +3092,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "53dbfe52a1611cc66c67a81b3d43a457c57736a7d5b0ee7f07c5a8a53f131eb5",
+      "base_hash": "6d4ade41c141470ee37a52d2adf5cf8673470fec7885daf3efc914ec3879bd62",
       "component_id": "skill:rpi-status",
       "consumers": [
         "claude"
@@ -3101,11 +3101,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "d436a1350717c2b90e585800e034a104a0bdbb60a8d23eae79b5e6c5d2085d78",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "53dbfe52a1611cc66c67a81b3d43a457c57736a7d5b0ee7f07c5a8a53f131eb5",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "8ff28371de8983874c2358b14079339667c9fdeadb4f2f58d5ed3d8e198fcd6e",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "6d4ade41c141470ee37a52d2adf5cf8673470fec7885daf3efc914ec3879bd62",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3114,7 +3114,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "5c3b2c26424056263c47c95073b17a58bd6f283a2e4cd671083e9acf8fd2c51a",
+      "base_hash": "18a9fa81e991a974cc54435ab1dd88af147aa81925b23d3ae4aa10303320ecd0",
       "component_id": "skill:rpi-tool-design",
       "consumers": [
         "claude"
@@ -3123,11 +3123,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "edf0ca294e680de41ed3d709f38f2ee215f665b47de02438b22b095d14f934fd",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "5c3b2c26424056263c47c95073b17a58bd6f283a2e4cd671083e9acf8fd2c51a",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "e48ae2d4700bb5b9baad2d162cb7f1112bba1d5c3ee23b8973419095eb5cb4af",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "18a9fa81e991a974cc54435ab1dd88af147aa81925b23d3ae4aa10303320ecd0",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3178,7 +3178,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "e0546215e9e9b53e89e2e5424e75794fbf3e8b1897f1441a1c56538fabc18fcf",
+      "base_hash": "4796a145ec8518b7b9c4a565f3f3c1c6df403c15f82a9ac5dc4df21549d0d266",
       "component_id": "skill:rpi-triage",
       "consumers": [
         "claude"
@@ -3187,11 +3187,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "16a28b765db389d6234ed84703878a80708d98ab665871e3a67799e9297396cc",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "e0546215e9e9b53e89e2e5424e75794fbf3e8b1897f1441a1c56538fabc18fcf",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "93ec80d2e5829cc24b9885ddb886f2c02516b8715ad6a73aa2ec8ff537437936",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "4796a145ec8518b7b9c4a565f3f3c1c6df403c15f82a9ac5dc4df21549d0d266",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3263,7 +3263,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "d02a9233c850ce05e7b456778ead3efdfa1604b6b8f9e421a6f362d70653c126",
+      "base_hash": "aabbb0d11538d8d4b69e314479462052d7922956d9e1fee07b731847a93c0a50",
       "component_id": "skill:rpi-update-docs",
       "consumers": [
         "claude"
@@ -3272,11 +3272,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "c6edb810a4c8ba6b7f24ccf0eda1624562b2036c26ed25d7736808bdb1866ab1",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "d02a9233c850ce05e7b456778ead3efdfa1604b6b8f9e421a6f362d70653c126",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "b1bd71232ee3ca7589bac78bfefc824af364d4268fdb18fda5609feb60a3ca58",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "aabbb0d11538d8d4b69e314479462052d7922956d9e1fee07b731847a93c0a50",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3306,7 +3306,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "ba85ac52fc2ed3ee65288e755631d96cb9c77b8cdc75207a3df3299463eadedf",
+      "base_hash": "5d2db290f79b15bd725c1c4b09ae56e02f054dde969c690b868376859eabbaf4",
       "component_id": "skill:rpi-validate",
       "consumers": [
         "claude"
@@ -3315,11 +3315,11 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "authored_sha256": "6d1e524b10433e20cd6b0a41c1a067f592df7001cf69c72d202e8bcf32b1096b",
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "ba85ac52fc2ed3ee65288e755631d96cb9c77b8cdc75207a3df3299463eadedf",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "authored_sha256": "a72722e1a25280300811b8b02be7fa9dc80e22b5e60ab5dcebdcc85d22a35b69",
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "5d2db290f79b15bd725c1c4b09ae56e02f054dde969c690b868376859eabbaf4",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -3601,7 +3601,7 @@
         "harness": "claude",
         "sha256": "bb6160eda79372660a247b14d7d2e3cb467fda5c0f67c3004e7efe1ef435cf38"
       },
-      "base_hash": "7721d05b911e4965320c62acdaebc5f4b58db31d29797700b3329a70be2eb478",
+      "base_hash": "5e7817c8550ca9b0217ab9072b245de615c841088e186fdc36785547030028fd",
       "component_id": "resource:distribution-manifest",
       "consumers": [
         "claude",
@@ -3611,10 +3611,10 @@
       "ownership": "cc-rpi",
       "root_id": "project",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "rendered_sha256": "7721d05b911e4965320c62acdaebc5f4b58db31d29797700b3329a70be2eb478",
-        "revision": "4596be7444ce026ca38f817a0a6656cd2733e77c",
-        "version": "2.1.0"
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "rendered_sha256": "5e7817c8550ca9b0217ab9072b245de615c841088e186fdc36785547030028fd",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       },
       "status": "clean"
     },
@@ -4102,9 +4102,9 @@
       ],
       "route": "direct",
       "source": {
-        "manifest_sha256": "01fe914ddf1bdba22abb13ae9ebdcfefa17a0c3297c15549b4cb0fcfe54bb428",
-        "revision": "5f9c8dcd2b6183333186d993440e9243ed24adb9",
-        "version": "2.1.0"
+        "manifest_sha256": "cdcbd42a01369526b82aa3717ec0fe35adaa5cace5c6dfdc7a997d4a4b35047c",
+        "revision": "909d202b4623235760d74359e43c4dda0034a635",
+        "version": "2.2.1"
       }
     },
     "codex": {
