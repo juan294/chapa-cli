@@ -236,6 +236,19 @@ describe("chapa merge links a secondary GitHub account", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
+  it("200 from an older server (no duplicateProfile) without alsoRegistered: prints no profile note", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(OLDER_SERVER_LINKED))
+      .mockResolvedValueOnce(jsonResponse(STATUS_OK));
+
+    await runCli(mergeArgs(), telemetrySent);
+
+    expect(allOutput()).toContain("Linked corp_user to juan294");
+    expect(allOutput()).not.toContain("has its own Chapa profile");
+    expect(allOutput()).not.toContain("duplicate profile");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
   it("200 with a status that needs a new token: prints the recovery command", async () => {
     mockFetch
       .mockResolvedValueOnce(jsonResponse(LINKED))
@@ -413,6 +426,17 @@ describe("chapa merge links a secondary GitHub account", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
+  it("--json success with a failed status read: reports linkStatus null and exits 0", async () => {
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(LINKED))
+      .mockResolvedValueOnce(jsonResponse({ error: "unavailable" }, 503));
+
+    await runCli(mergeArgs("--json"), telemetrySent);
+
+    expect(stdoutJson()).toEqual(expect.objectContaining({ success: true, linked: true, linkStatus: null }));
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
   it("--json failure: writes the code, message, scopes and recovery command, and exits 1", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({
       error: "token_rejected",
@@ -516,6 +540,16 @@ describe("chapa unlink", () => {
 
     expect(allOutput()).toContain("No second GitHub account was linked to juan294.");
     expect(allOutput()).not.toContain("Unlinked");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("says nothing was linked without an owner when neither the server nor the config names one", async () => {
+    mockLoadConfig.mockReturnValue({ token: CLI_TOKEN, server: SERVER });
+    mockFetch.mockResolvedValueOnce(jsonResponse({ success: true, linked: false, wasLinked: false }));
+
+    await runCli(["unlink"], outputSeen);
+
+    expect(allOutput()).toContain("No second GitHub account was linked.");
     expect(exitSpy).not.toHaveBeenCalled();
   });
 

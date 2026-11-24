@@ -68,6 +68,16 @@ describe("normalizeErrorCauseChain", () => {
       chain: "SELF_SIGNED_CERT_IN_CHAIN",
     });
   });
+
+  it("collapses a cause that repeats its parent message in the detail but not in the chain", () => {
+    const err = new Error("fetch failed", { cause: new Error("fetch failed") });
+
+    expect(normalizeErrorCauseChain(err)).toEqual({
+      rootMessage: "fetch failed",
+      detail: "fetch failed",
+      chain: "fetch failed | fetch failed",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

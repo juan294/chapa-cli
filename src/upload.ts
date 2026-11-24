@@ -44,7 +44,7 @@ export interface ServerFailure {
  * What the server did with the linked login's own Chapa profile. Absent on a
  * server that predates link-time removal.
  */
-export type DuplicateProfile = "none" | "removed" | "failed";
+type DuplicateProfile = "none" | "removed" | "failed";
 
 export type LinkResult =
   | {
@@ -58,7 +58,7 @@ export type LinkResult =
   }
   | ServerFailure;
 
-export type LinkState =
+type LinkState =
   | { linked: false }
   | { linked: true; login: string; needsReconnect: boolean; connectedAt?: string };
 

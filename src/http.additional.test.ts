@@ -128,6 +128,26 @@ describe("http helpers", () => {
     expect(init?.headers["Content-Type"]).toBeUndefined();
   });
 
+  it("reports the status when the failed response body cannot be read", async () => {
+    const { requestJson } = await import("./http.js");
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(new Error("connection reset while reading"));
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(body, { status: 502 })));
+
+    const result = await requestJson({ url: "https://example.com" });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: false,
+      category: "http",
+      status: 502,
+      message: "HTTP 502",
+      text: "(unreadable)",
+    }));
+  });
+
   it("returns an empty http failure body when the response text is blank", async () => {
     const { requestJson } = await import("./http.js");
     vi.stubGlobal("fetch", vi.fn(async () => new Response("   ", { status: 400 })));
