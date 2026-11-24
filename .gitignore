@@ -19,3 +19,4 @@ CLAUDE.local.md
 docs/agents/
 logs/
 scripts/agents/
+__pycache__/
